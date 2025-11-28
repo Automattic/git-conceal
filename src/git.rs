@@ -117,13 +117,10 @@ pub fn filters_configured(repo_path: &Path) -> Result<bool> {
 
 /// Check if repository is locked (no key in config)
 pub fn is_locked(repo_path: &Path) -> Result<bool> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-
-    let config = repo.config().context("Failed to get git config")?;
-
-    match config.get_string("a8c-git-secrets.key") {
-        Ok(_) => Ok(false),
-        Err(_) => Ok(true),
+    // Try to load the key - if it fails, the repository is locked
+    match crate::key::load_key_from_config(repo_path) {
+        Ok(_) => Ok(false), // Key exists, repository is unlocked
+        Err(_) => Ok(true), // Key doesn't exist or can't be loaded, repository is locked
     }
 }
 
