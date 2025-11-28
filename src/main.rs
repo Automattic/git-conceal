@@ -29,7 +29,11 @@ enum Commands {
     /// Lock a repository (remove key from config)
     Lock,
     /// Show encryption status
-    Status,
+    Status {
+        /// Files to check (if empty, shows repository status)
+        #[arg(value_name = "FILE")]
+        files: Vec<String>,
+    },
     /// Git filter commands (internal use)
     Filter {
         #[command(subcommand)]
@@ -52,7 +56,7 @@ fn main() -> Result<()> {
         Commands::Init => cmd_init(),
         Commands::Unlock { key_source } => cmd_unlock(key_source),
         Commands::Lock => cmd_lock(),
-        Commands::Status => cmd_status(),
+        Commands::Status { files } => cmd_status(files),
         Commands::Filter { filter_cmd } => cmd_filter(filter_cmd),
     }
 }
@@ -143,28 +147,39 @@ fn cmd_lock() -> Result<()> {
     Ok(())
 }
 
-fn cmd_status() -> Result<()> {
+fn cmd_status(files: Vec<String>) -> Result<()> {
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
-    let is_locked = git::is_locked(&repo_path)?;
-    let filters_configured = git::filters_configured(&repo_path)?;
-    let encrypted_files = git::find_encrypted_files(&repo_path)?;
+    if files.is_empty() {
+        // Show repository status
+        let is_locked = git::is_locked(&repo_path)?;
+        let filters_configured = git::filters_configured(&repo_path)?;
+        let encrypted_files = git::find_encrypted_files(&repo_path)?;
 
-    println!("Repository: {}", repo_path.display());
-    println!("Status: {}", if is_locked { "locked" } else { "unlocked" });
-    println!(
-        "Filters configured: {}",
-        if filters_configured { "yes" } else { "no" }
-    );
+        println!("Repository: {}", repo_path.display());
+        println!("Status: {}", if is_locked { "locked" } else { "unlocked" });
+        println!(
+            "Filters configured: {}",
+            if filters_configured { "yes" } else { "no" }
+        );
 
-    if !encrypted_files.is_empty() {
-        println!("\nEncrypted files:");
-        for file in &encrypted_files {
-            println!("  {}", file.display());
+        if !encrypted_files.is_empty() {
+            println!("\nEncrypted files:");
+            for file in &encrypted_files {
+                println!("  {}", file.display());
+            }
+        } else {
+            println!("\nNo encrypted files found in working directory");
         }
     } else {
-        println!("\nNo encrypted files found in working directory");
+        // Check status for specific files
+        for file_str in &files {
+            let file_path = std::path::Path::new(file_str);
+            let is_encrypted = git::is_file_encrypted(&repo_path, file_path)?;
+            let status = if is_encrypted { "encrypted" } else { "not encrypted" };
+            println!("{}: {}", file_str, status);
+        }
     }
 
     Ok(())

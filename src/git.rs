@@ -175,6 +175,30 @@ pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
 }
 
 
+/// Get relative path from repository root
+/// If the path is already relative or can't be stripped, returns the original path
+fn get_relative_path<'a>(repo_path: &Path, file_path: &'a Path) -> &'a Path {
+    file_path.strip_prefix(repo_path).unwrap_or(file_path)
+}
+
+/// Check if a file has the encryption filter attribute set
+/// Helper function that takes a repository and a relative path
+fn has_encryption_filter(repo: &Repository, rel_path: &Path) -> bool {
+    match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
+        Ok(Some(attr_value)) => attr_value == FILTER_NAME,
+        Ok(None) => false,
+        Err(_) => false, // On error, assume not encrypted
+    }
+}
+
+/// Check if a specific file has the encryption filter attribute set
+pub fn is_file_encrypted(repo_path: &Path, file_path: &Path) -> Result<bool> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+
+    let rel_path = get_relative_path(repo_path, file_path);
+    Ok(has_encryption_filter(&repo, rel_path))
+}
+
 /// Find all files in the working directory that have the encryption filter attribute set
 /// Uses git2's attribute checking to properly handle .gitattributes patterns
 pub fn find_encrypted_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
@@ -193,26 +217,11 @@ pub fn find_encrypted_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
         let full_path = entry.path();
 
         // Get relative path from repo root
-        let rel_path = match full_path.strip_prefix(repo_path) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+        let rel_path = get_relative_path(repo_path, full_path);
 
-        // Check if this file has the filter attribute set to our filter name
-        // git2's get_attr returns Some(value) if the attribute is set, None otherwise
-        match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
-            Ok(Some(attr_value)) => {
-                if attr_value == FILTER_NAME {
-                    encrypted_files.push(rel_path.to_path_buf());
-                }
-            }
-            Ok(None) => {
-                // Attribute not set, skip
-            }
-            Err(_) => {
-                // Error checking attribute, skip
-                continue;
-            }
+        // Check if this file has the encryption filter attribute set
+        if has_encryption_filter(&repo, rel_path) {
+            encrypted_files.push(rel_path.to_path_buf());
         }
     }
 
