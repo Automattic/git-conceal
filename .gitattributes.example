@@ -1,0 +1,23 @@
+# Example .gitattributes file for a8c-git-secrets
+# Copy this to .gitattributes in your repository and customize as needed
+
+# Encrypt specific files
+secretfile filter=a8c-git-secrets diff=a8c-git-secrets
+config/secrets.yml filter=a8c-git-secrets diff=a8c-git-secrets
+
+# Encrypt all files with specific extensions
+*.key filter=a8c-git-secrets diff=a8c-git-secrets
+*.pem filter=a8c-git-secrets diff=a8c-git-secrets
+*.p12 filter=a8c-git-secrets diff=a8c-git-secrets
+
+# Encrypt all files in a directory (use ** to match recursively)
+secrets/** filter=a8c-git-secrets diff=a8c-git-secrets
+private/** filter=a8c-git-secrets diff=a8c-git-secrets
+
+# IMPORTANT: Make sure .gitattributes itself is NOT encrypted!
+.gitattributes !filter !diff
+
+# Also exclude other git files
+.gitignore !filter !diff
+.gitmodules !filter !diff
+
