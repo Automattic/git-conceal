@@ -46,6 +46,12 @@ enum FilterCommands {
     Clean,
     /// Smudge filter: decrypt data (used by git on checkout)
     Smudge,
+    /// Textconv: decrypt file for git diff (takes filename as argument)
+    Textconv {
+        /// Filename to decrypt and show in diff
+        #[arg(value_name = "FILE")]
+        filename: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -136,8 +142,7 @@ fn cmd_lock() -> Result<()> {
 
     // Re-checkout encrypted files to get raw encrypted data from repository
     // This must be done after removing filters, otherwise git will try to decrypt
-    git::recheckout_encrypted_files(&repo_path)
-        .context("Failed to re-checkout encrypted files")?;
+    git::recheckout_encrypted_files(&repo_path).context("Failed to re-checkout encrypted files")?;
 
     // Remove the encryption key last
     key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
@@ -176,7 +181,11 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         for file_str in &files {
             let file_path = std::path::Path::new(file_str);
             let is_encrypted = git::is_file_encrypted(&repo_path, file_path)?;
-            let status = if is_encrypted { "encrypted" } else { "not encrypted" };
+            let status = if is_encrypted {
+                "encrypted"
+            } else {
+                "not encrypted"
+            };
             println!("{}: {}", file_str, status);
         }
     }
@@ -193,6 +202,7 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
     match filter_cmd {
         FilterCommands::Clean => filter::clean_filter(&repo_path),
         FilterCommands::Smudge => filter::smudge_filter(&repo_path),
+        FilterCommands::Textconv { filename } => filter::diff_textconv(&repo_path, &filename),
     }
 }
 

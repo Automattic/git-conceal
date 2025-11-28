@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 ///  - IV is the initialization vector for the AES-256-CTR cipher
 ///  - encrypted data is the AES-256-CTR encrypted data of the file's original content
 ///  - HMAC is used to validate integrity of the decryption key and the encrypted data
-
 const MAGIC_HEADER: &[u8] = b"\0a8ccrypt";
 const MAGIC_HEADER_SIZE: usize = MAGIC_HEADER.len();
 const VERSION: u8 = 1; // Format version (includes HMAC for key verification)
@@ -87,8 +86,8 @@ pub fn encrypt(key: &[u8; KEY_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
 
     // Compute HMAC (authenticates the entire ciphertext including header)
     let hmac_key = derive_hmac_key(key);
-    let mut mac = HmacSha256::new_from_slice(&hmac_key)
-        .context("Failed to create HMAC instance")?;
+    let mut mac =
+        HmacSha256::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     mac.update(&result); // HMAC covers: magic + version + IV + encrypted data
     let hmac_tag = mac.finalize().into_bytes();
     result.extend_from_slice(&hmac_tag);
@@ -111,7 +110,11 @@ pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
     // Extract and verify version byte
     let version = ciphertext[MAGIC_HEADER_SIZE];
     if version != VERSION {
-        anyhow::bail!("Unsupported encryption format version: {} (expected {})", version, VERSION);
+        anyhow::bail!(
+            "Unsupported encryption format version: {} (expected {})",
+            version,
+            VERSION
+        );
     }
 
     // Extract IV (after magic header + version byte)
@@ -126,18 +129,17 @@ pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
 
     // Verify HMAC before attempting decryption
     let hmac_key = derive_hmac_key(key);
-    let mut mac = HmacSha256::new_from_slice(&hmac_key)
-        .context("Failed to create HMAC instance")?;
+    let mut mac =
+        HmacSha256::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     // HMAC covers: magic + version + IV + encrypted data (everything except the HMAC itself)
     mac.update(&ciphertext[..ciphertext.len() - HMAC_SIZE]);
-    mac.verify_slice(expected_hmac)
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "HMAC verification failed - the decryption key may be incorrect, \
+    mac.verify_slice(expected_hmac).map_err(|_| {
+        anyhow::anyhow!(
+            "HMAC verification failed - the decryption key may be incorrect, \
                  or the file may have been tampered with. Please verify you're using \
                  the correct key for this repository."
-            )
-        })?;
+        )
+    })?;
 
     // Decrypt the data
     let mut cipher = Ctr128BE::<Aes256>::new(key.into(), iv.into());

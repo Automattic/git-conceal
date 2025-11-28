@@ -1,6 +1,7 @@
 use crate::crypto;
 use crate::key;
 use anyhow::{Context, Result};
+use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
@@ -62,6 +63,30 @@ pub fn smudge_filter(repo_path: &Path) -> Result<()> {
     io::stdout()
         .write_all(&plaintext)
         .context("Failed to write plaintext to stdout")?;
+
+    Ok(())
+}
+
+/// Git diff textconv: decrypt file and write to stdout
+/// Used by git diff to show decrypted content of encrypted files.
+/// Takes a filename as argument (provided by git when using textconv).
+pub fn diff_textconv(repo_path: &Path, filename: &str) -> Result<()> {
+    let key = key::load_key_from_config(repo_path).context("Failed to load encryption key")?;
+
+    // Read file
+    let input = fs::read(filename).with_context(|| format!("Failed to read file: {}", filename))?;
+
+    // Decrypt if encrypted, otherwise output as-is
+    let plaintext = if crypto::is_encrypted(&input) {
+        crypto::decrypt(&key, &input).context("Failed to decrypt data")?
+    } else {
+        input
+    };
+
+    // Output plaintext content
+    io::stdout()
+        .write_all(&plaintext)
+        .context("Failed to write content to stdout")?;
 
     Ok(())
 }

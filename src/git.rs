@@ -91,7 +91,7 @@ pub fn setup_filters(repo_path: &Path) -> Result<()> {
     config
         .set_str(
             &format!("diff.{}.textconv", DIFF_NAME),
-            &format!("{} filter smudge", binary_str),
+            &format!("{} filter textconv", binary_str),
         )
         .context("Failed to set diff filter")?;
 
@@ -149,7 +149,10 @@ pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    println!("Re-checking out {} encrypted file(s)...", encrypted_files.len());
+    println!(
+        "Re-checking out {} encrypted file(s)...",
+        encrypted_files.len()
+    );
 
     // Use git checkout to restore files from HEAD
     // This will get the raw encrypted data from the repository
@@ -173,7 +176,6 @@ pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
 
     Ok(())
 }
-
 
 /// Get relative path from repository root
 /// If the path is already relative or can't be stripped, returns the original path
