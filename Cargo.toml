@@ -17,7 +17,7 @@ ctr = "0.9"
 sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
-git2 = "0.20"
+git2 = { version = "0.20", features = ["vendored-openssl", "vendored-libgit2"] }
 hex = "0.4"
 anyhow = "1.0"
 thiserror = "1.0"
