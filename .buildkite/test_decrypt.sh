@@ -10,14 +10,15 @@ binary=$(find . -name "a8c-git-secrets-*" -type f -print -quit)
 chmod +x "$binary"
 echo "Binary: $binary"
 
-echo "~~~ Content before decrypt"
-echo "=== some-secrets.txt ==="
-cat some-secrets.txt | xxd
-echo "=== more-secrets.txt ==="
-cat more-secrets.txt | xxd
-
 echo "~~~ Status before decrypt"
 "$binary" status
+
+echo "~~~ Content before decrypt"
+function dump_bin_file() { command -v hexdump >/dev/null 2>&1 && hexdump -C "$1" || od -A x -t x1z "$1"; }
+echo "=== some-secrets.txt ==="
+dump_bin_file "some-secrets.txt"
+echo "=== more-secrets.txt ==="
+dump_bin_file "more-secrets.txt"
 
 echo "~~~ Decrypt repo"
 # This would be a leak in a real repo, but this key is temporary for testing purposes
@@ -30,6 +31,6 @@ echo "~~~ Status after decrypt"
 
 echo "~~~ Content after decrypt"
 echo "=== some-secrets.txt ==="
-cat some-secrets.txt | xxd
+cat some-secrets.txt
 echo "=== more-secrets.txt ==="
-cat more-secrets.txt | xxd
+cat more-secrets.txt
