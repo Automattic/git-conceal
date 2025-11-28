@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 echo "~~~ Building..."
 [ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
 cargo build --release

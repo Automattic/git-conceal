@@ -1,28 +1,57 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/buildkite/pipeline-schema/main/schema.json
 ---
+
+env:
+  IMAGE_ID: "xcode-26.0"
+
 steps:
-  - label: "Build macOS"
-    agents:
-      queue: mac
-    env:
-      IMAGE_ID: "xcode-26.0"
-    command: |
-      echo "~~~ Installing Rust via Homebrew..."
-      brew install rust
+  - group: "Build"
+    steps:
+      - label: "Build macOS"
+        key: build-macos
+        agents:
+          queue: mac
+        command: |
+          echo "~~~ Installing Rust via Homebrew..."
+          brew install rust
 
-      .buildkite/build_and_upload_artifact.sh
+          .buildkite/build_and_upload_artifact.sh
 
-  - label: "Build Linux"
-    agents:
-      queue: default
-    command: |
-      echo "~~~ Installing Rust via rustup..."
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - label: "Build Linux"
+        key: build-linux
+        agents:
+          queue: default
+        command: |
+          echo "~~~ Installing Rust via rustup..."
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      .buildkite/build_and_upload_artifact.sh
+          .buildkite/build_and_upload_artifact.sh
 
-  - label: "Build Windows"
-    agents:
-      queue: windows
-    command: |
-      bash .buildkite/build_and_upload_artifact.sh .exe
+      - label: "Build Windows"
+        key: build-windows
+        agents:
+          queue: windows
+        command: |
+          bash .buildkite/build_and_upload_artifact.sh .exe
+  - group: "Test"
+    steps:
+      - label: "Test macOS"
+        depends_on: build-macos
+        agents:
+          queue: mac
+        command: |
+          .buildkite/test_decrypt.sh
+
+      - label: "Test Linux"
+        depends_on: build-linux
+        agents:
+          queue: default
+        command: |
+          .buildkite/test_decrypt.sh
+
+      - label: "Test windows"
+        depends_on: build-windows
+        agents:
+          queue: windows
+        command: |
+          bash .buildkite/test_decrypt.sh
