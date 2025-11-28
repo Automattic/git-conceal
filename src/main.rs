@@ -23,7 +23,6 @@ enum Commands {
     /// Unlock a repository with a key (from stdin, file, or environment variable)
     Unlock {
         /// Key source: '-' for stdin, 'env:VARNAME' for environment variable, or file path
-        #[arg(default_value = "-")]
         key_source: String,
     },
     /// Lock a repository (remove key from config)
@@ -95,7 +94,10 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
     // Read key from input
-    let key = if let Some(env_var) = key_source.strip_prefix("env:") {
+    let key = if key_source == "-" {
+        // Read from stdin
+        key::read_key_from_input(None).context("Failed to read key from stdin")?
+    } else if let Some(env_var) = key_source.strip_prefix("env:") {
         // Read from environment variable (format: env:VARNAME)
         if env_var.is_empty() {
             anyhow::bail!("Environment variable name cannot be empty after 'env:'");
@@ -103,9 +105,6 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         let key_str = std::env::var(env_var)
             .with_context(|| format!("Failed to read key from environment variable {}", env_var))?;
         key::key_from_base64(key_str.trim()).context("Failed to decode key")?
-    } else if key_source == "-" {
-        // Read from stdin
-        key::read_key_from_input(None).context("Failed to read key from stdin")?
     } else {
         // Read from file
         let key_str = std::fs::read_to_string(&key_source)
