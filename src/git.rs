@@ -127,17 +127,56 @@ pub fn is_locked(repo_path: &Path) -> Result<bool> {
     }
 }
 
-/// Remove key from git config (lock the repository)
-pub fn lock_repo(repo_path: &Path) -> Result<()> {
+/// Remove git filters configuration
+pub fn remove_filters(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
 
-    // Remove the key (ignore error if it doesn't exist)
-    let _ = config.remove("a8c-git-secrets.key");
+    // Remove filter configuration
+    let _ = config.remove(&format!("filter.{}.clean", FILTER_NAME));
+    let _ = config.remove(&format!("filter.{}.smudge", FILTER_NAME));
+    let _ = config.remove(&format!("filter.{}.required", FILTER_NAME));
+    let _ = config.remove(&format!("diff.{}.textconv", DIFF_NAME));
 
     Ok(())
 }
+
+/// Re-checkout encrypted files from the repository (to get raw encrypted data)
+pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
+    use std::process::Command;
+
+    let encrypted_files = find_encrypted_files(repo_path)?;
+
+    if encrypted_files.is_empty() {
+        return Ok(());
+    }
+
+    println!("Re-checking out {} encrypted file(s)...", encrypted_files.len());
+
+    // Use git checkout to restore files from HEAD
+    // This will get the raw encrypted data from the repository
+    for file_path in &encrypted_files {
+        let file_str = file_path.to_string_lossy().to_string();
+        let status = Command::new("git")
+            .arg("checkout")
+            .arg("HEAD")
+            .arg("--")
+            .arg(&file_str)
+            .current_dir(repo_path)
+            .status()
+            .context("Failed to execute git checkout")?;
+
+        if !status.success() {
+            eprintln!("Warning: Failed to re-checkout {}", file_path.display());
+        } else {
+            println!("  Re-checked out: {}", file_path.display());
+        }
+    }
+
+    Ok(())
+}
+
 
 /// Find all files in the working directory that have the encryption filter attribute set
 /// Uses git2's attribute checking to properly handle .gitattributes patterns

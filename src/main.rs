@@ -128,9 +128,18 @@ fn cmd_lock() -> Result<()> {
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
-    git::lock_repo(&repo_path).context("Failed to lock repository")?;
+    // Remove git filter configuration first (so git won't try to decrypt on checkout)
+    git::remove_filters(&repo_path).context("Failed to remove git filters")?;
 
-    println!("Repository locked (key removed from config)");
+    // Re-checkout encrypted files to get raw encrypted data from repository
+    // This must be done after removing filters, otherwise git will try to decrypt
+    git::recheckout_encrypted_files(&repo_path)
+        .context("Failed to re-checkout encrypted files")?;
+
+    // Remove the encryption key last
+    key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
+
+    println!("Repository locked (key and filters removed, files re-checked out)");
     Ok(())
 }
 

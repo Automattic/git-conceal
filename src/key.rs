@@ -98,3 +98,17 @@ pub fn read_key_from_input(env_var: Option<&str>) -> Result<[u8; KEY_SIZE]> {
 }
 
 use std::io::Read;
+
+/// Remove the encryption key from git config
+pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
+    use git2::Repository;
+
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+
+    let mut config = repo.config().context("Failed to get git config")?;
+
+    // Remove the key (ignore error if it doesn't exist)
+    let _ = config.remove("a8c-git-secrets.key");
+
+    Ok(())
+}
