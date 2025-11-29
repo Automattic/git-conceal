@@ -144,10 +144,8 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     // Store key in git config
     key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;
 
-    // Set up git filters if not already configured
-    if !git::filters_configured(&repo_path)? {
-        git::setup_filters(&repo_path).context("Failed to set up git filters")?;
-    }
+    // Set up git filters
+    git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
     // Decrypt existing encrypted files in working directory
     decrypt_working_files(&repo_path, &key).context("Failed to decrypt existing files")?;
