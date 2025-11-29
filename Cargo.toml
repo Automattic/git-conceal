@@ -24,6 +24,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 dirs = "5.0"
 walkdir = "2"
+indoc = "2.0.7"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

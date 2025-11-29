@@ -6,6 +6,7 @@ mod key;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::{io::Read, path::Path};
+use indoc::indoc;
 
 #[derive(Parser)]
 #[command(name = "a8c-git-secrets")]
@@ -86,11 +87,31 @@ fn cmd_init() -> Result<()> {
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
-    println!("Repository initialized for a8c-git-secrets");
-    println!("\nYour encryption key (save this securely!):");
-    println!("{}", key_b64);
-    println!("\nTo share this key with others, they can run:");
-    println!("  echo '{}' | a8c-git-secrets unlock -", key_b64);
+    let instructions = format!(
+        indoc! {r#"
+            Repository initialized for a8c-git-secrets
+
+            Your encryption key (save this securely!):
+            {key_b64}
+
+            Once you share this key with users you trust, they can run this to unlock their working copy:
+              echo '{key_b64}' | a8c-git-secrets unlock -
+
+            To start adding files to be encrypted in this repository:
+              - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:
+                ```
+                secrets-file.json  filter={filter} diff={diff}
+                secrets/*  filter={filter} diff={diff}
+                ```
+              - `git add` and `git commit` those files, alongside the `.gitattributes` file.
+                The files having the `filter` attribute set will be encrypted on commit and decrypted on checkout automatically.
+              - Run 'a8c-git-secrets status' to validate the list of files that are encrypted.
+        "#},
+        key_b64 = key_b64,
+        filter = git::FILTER_NAME,
+        diff = git::DIFF_NAME,
+    );
+    println!("{}", instructions);
 
     Ok(())
 }

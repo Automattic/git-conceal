@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use git2::Repository;
 use std::path::{Path, PathBuf};
 
-const FILTER_NAME: &str = "a8c-git-secrets";
-const DIFF_NAME: &str = "a8c-git-secrets";
+pub const FILTER_NAME: &str = "a8c-git-secrets";
+pub const DIFF_NAME: &str = "a8c-git-secrets";
 
 /// Find the git repository root using git2's discover function
 pub fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
