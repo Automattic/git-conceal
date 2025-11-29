@@ -5,8 +5,8 @@ mod key;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::io::Read;
 use indoc::indoc;
+use std::io::Read;
 
 #[derive(Parser)]
 #[command(name = "a8c-git-secrets")]
@@ -96,7 +96,9 @@ fn cmd_init() -> Result<()> {
 
     // Check if already initialized
     if git::filters_configured(&repo_path)? {
-        eprintln!("Repository is already initialized for a8c-git-secrets (filters already configured)");
+        eprintln!(
+            "Repository is already initialized for a8c-git-secrets (filters already configured)"
+        );
         return Ok(());
     }
     if git::is_unlocked(&repo_path)? {
@@ -224,7 +226,10 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         let encrypted_files = git::find_encrypted_files(&repo_path)?;
 
         println!("Repository: {}", repo_path.display());
-        println!("Status: {}", if is_unlocked { "unlocked" } else { "locked" });
+        println!(
+            "Status: {}",
+            if is_unlocked { "unlocked" } else { "locked" }
+        );
         println!(
             "Filters configured: {}",
             if filters_configured { "yes" } else { "no" }
@@ -267,4 +272,3 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
         FilterCommands::Textconv { filename } => filter::diff_textconv(&repo_path, &filename),
     }
 }
-

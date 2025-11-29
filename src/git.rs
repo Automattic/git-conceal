@@ -121,7 +121,7 @@ pub fn filters_configured(repo_path: &Path) -> Result<bool> {
 pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
     // Try to load the key - if it succeeds, the repository is unlocked
     match crate::key::load_key_from_config(repo_path) {
-        Ok(_) => Ok(true), // Key exists, repository is unlocked
+        Ok(_) => Ok(true),   // Key exists, repository is unlocked
         Err(_) => Ok(false), // Key doesn't exist or can't be loaded, repository is locked
     }
 }
@@ -256,7 +256,8 @@ pub fn dirty_files(repo_path: &Path, files: &[PathBuf]) -> Result<Vec<PathBuf>> 
     // Check status of each file
     for file_path in files {
         // Get file status
-        let status = repo.status_file(file_path.as_path())
+        let status = repo
+            .status_file(file_path.as_path())
             .with_context(|| format!("Failed to get status for {}", file_path.display()))?;
 
         // Check if file has any modifications (workdir or index)
