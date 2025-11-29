@@ -5,7 +5,7 @@ mod key;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::path::Path;
+use std::{io::Read, path::Path};
 
 #[derive(Parser)]
 #[command(name = "a8c-git-secrets")]
@@ -100,23 +100,25 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
     // Read key from input
-    let key = if key_source == "-" {
-        // Read from stdin
-        key::read_key_from_input(None).context("Failed to read key from stdin")?
+    let base64_key: String = if key_source == "-" {
+        let mut input = String::new();
+        std::io::stdin()
+            .read_to_string(&mut input)
+            .context("Failed to read key from stdin")?;
+        input
     } else if let Some(env_var) = key_source.strip_prefix("env:") {
         // Read from environment variable (format: env:VARNAME)
         if env_var.is_empty() {
             anyhow::bail!("Environment variable name cannot be empty after 'env:'");
         }
-        let key_str = std::env::var(env_var)
-            .with_context(|| format!("Failed to read key from environment variable {}", env_var))?;
-        key::key_from_base64(key_str.trim()).context("Failed to decode key")?
+        std::env::var(env_var)
+            .with_context(|| format!("Failed to read key from environment variable {}", env_var))?
     } else {
         // Read from file
-        let key_str = std::fs::read_to_string(&key_source)
-            .with_context(|| format!("Failed to read key from file: {}", key_source))?;
-        key::key_from_base64(key_str.trim()).context("Failed to decode key")?
+        std::fs::read_to_string(&key_source)
+            .with_context(|| format!("Failed to read key from file: {}", key_source))?
     };
+    let key = key::key_from_base64(base64_key.trim()).context("Failed to decode key")?;
 
     // Store key in git config
     key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;

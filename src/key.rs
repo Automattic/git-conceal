@@ -6,6 +6,35 @@ use std::path::Path;
 const KEY_SIZE: usize = 32;
 pub const CONFIG_KEY_NAME: &str = "a8c-git-secrets.key";
 
+/// Generate a new encryption key
+pub fn generate_key() -> [u8; KEY_SIZE] {
+    crypto::generate_key()
+}
+
+/// Export key as base64 string
+pub fn key_to_base64(key: &[u8; KEY_SIZE]) -> String {
+    general_purpose::STANDARD.encode(key)
+}
+
+/// Import key from base64 string
+pub fn key_from_base64(key_b64: &str) -> Result<[u8; KEY_SIZE]> {
+    let key_bytes = general_purpose::STANDARD
+        .decode(key_b64)
+        .context("Failed to decode base64 key")?;
+
+    if key_bytes.len() != KEY_SIZE {
+        anyhow::bail!(
+            "Invalid key size: expected {} bytes, got {}",
+            KEY_SIZE,
+            key_bytes.len()
+        );
+    }
+
+    let mut key = [0u8; KEY_SIZE];
+    key.copy_from_slice(&key_bytes);
+    Ok(key)
+}
+
 /// Load the encryption key from git config
 pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; KEY_SIZE]> {
     use git2::Repository;
@@ -36,55 +65,6 @@ pub fn store_key_in_config(repo_path: &Path, key: &[u8; KEY_SIZE]) -> Result<()>
 
     Ok(())
 }
-
-/// Generate a new encryption key
-pub fn generate_key() -> [u8; KEY_SIZE] {
-    crypto::generate_key()
-}
-
-/// Export key as base64 string
-pub fn key_to_base64(key: &[u8; KEY_SIZE]) -> String {
-    general_purpose::STANDARD.encode(key)
-}
-
-/// Import key from base64 string
-pub fn key_from_base64(key_b64: &str) -> Result<[u8; KEY_SIZE]> {
-    let key_bytes = general_purpose::STANDARD
-        .decode(key_b64)
-        .context("Failed to decode base64 key")?;
-
-    if key_bytes.len() != KEY_SIZE {
-        anyhow::bail!(
-            "Invalid key size: expected {} bytes, got {}",
-            KEY_SIZE,
-            key_bytes.len()
-        );
-    }
-
-    let mut key = [0u8; KEY_SIZE];
-    key.copy_from_slice(&key_bytes);
-    Ok(key)
-}
-
-/// Read key from stdin or environment variable
-pub fn read_key_from_input(env_var: Option<&str>) -> Result<[u8; KEY_SIZE]> {
-    // First try environment variable if provided
-    if let Some(var) = env_var {
-        if let Ok(key_str) = std::env::var(var) {
-            return key_from_base64(key_str.trim());
-        }
-    }
-
-    // Otherwise read from stdin
-    let mut input = String::new();
-    std::io::stdin()
-        .read_to_string(&mut input)
-        .context("Failed to read key from stdin")?;
-
-    key_from_base64(input.trim())
-}
-
-use std::io::Read;
 
 /// Remove the encryption key from git config
 pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
