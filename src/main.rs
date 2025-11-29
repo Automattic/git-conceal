@@ -35,6 +35,7 @@ enum Commands {
         files: Vec<String>,
     },
     /// Git filter commands (internal use)
+    #[command(hide = true)]
     Filter {
         #[command(subcommand)]
         filter_cmd: FilterCommands,
