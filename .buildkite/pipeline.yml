@@ -40,18 +40,18 @@ steps:
         agents:
           queue: mac
         command: |
-          .buildkite/test_decrypt.sh
+          .buildkite/test_decrypt.sh aarch64-apple-darwin
 
       - label: "Test Linux"
         depends_on: build-linux
         agents:
           queue: default
         command: |
-          .buildkite/test_decrypt.sh
+          .buildkite/test_decrypt.sh x86_64-unknown-linux-gnu
 
       - label: "Test windows"
         depends_on: build-windows
         agents:
           queue: windows
         command: |
-          bash .buildkite/test_decrypt.sh
+          bash .buildkite/test_decrypt.sh x86_64-pc-windows-gnu
