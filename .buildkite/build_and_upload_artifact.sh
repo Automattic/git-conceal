@@ -7,10 +7,9 @@ echo "~~~ Building..."
 cargo build --release
 
 echo "~~~ Uploading artifact..."
-system=$(uname -s | tr '[:upper:]' '[:lower:]')
-arch=$(uname -m)
+target_triple=$(rustc -vV | grep "^host" | awk '{print $2}')
 version=$(git rev-parse --short HEAD)
 extension="${1:-}"
-target_name="a8c-git-secrets-${system}-${arch}-${version}${extension}"
-cp "target/release/a8c-git-secrets" "$target_name"
-buildkite-agent artifact upload "$target_name"
+dest_filename="a8c-git-secrets-${target_triple}-${version}${extension}"
+cp "target/release/a8c-git-secrets" "$dest_filename"
+buildkite-agent artifact upload "$dest_filename"
