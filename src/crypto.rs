@@ -148,3 +148,365 @@ pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
 
     Ok(buffer)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_key() {
+        let key1 = generate_key();
+        let key2 = generate_key();
+
+        // Keys should be 32 bytes
+        assert_eq!(key1.len(), KEY_SIZE);
+        assert_eq!(key2.len(), KEY_SIZE);
+
+        // Keys should be different (very unlikely to be the same)
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let key = generate_key();
+        let plaintext = b"Hello, world! This is a test message.";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_empty_file() {
+        let key = generate_key();
+        let plaintext = b"";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        assert!(ciphertext.len() >= MIN_ENCRYPTED_SIZE);
+
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_single_byte() {
+        let key = generate_key();
+        let plaintext = b"a";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_very_small_file() {
+        let key = generate_key();
+        let plaintext = b"hi";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_large_file() {
+        let key = generate_key();
+        let plaintext: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+        let ciphertext = encrypt(&key, &plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_binary_data() {
+        let key = generate_key();
+        let plaintext: Vec<u8> = vec![0x00, 0xFF, 0x80, 0x7F, 0x01, 0xFE];
+
+        let ciphertext = encrypt(&key, &plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted);
+    }
+
+    #[test]
+    fn test_deterministic_encryption() {
+        let key = generate_key();
+        let plaintext = b"This should encrypt to the same ciphertext";
+
+        let ciphertext1 = encrypt(&key, plaintext).unwrap();
+        let ciphertext2 = encrypt(&key, plaintext).unwrap();
+
+        // Same plaintext with same key should produce same ciphertext
+        assert_eq!(ciphertext1, ciphertext2);
+    }
+
+    #[test]
+    fn test_different_keys_produce_different_ciphertext() {
+        let key1 = generate_key();
+        let key2 = generate_key();
+        let plaintext = b"Same plaintext, different keys";
+
+        let ciphertext1 = encrypt(&key1, plaintext).unwrap();
+        let ciphertext2 = encrypt(&key2, plaintext).unwrap();
+
+        // Different keys should produce different ciphertexts
+        assert_ne!(ciphertext1, ciphertext2);
+    }
+
+    #[test]
+    fn test_wrong_key_fails_decryption() {
+        let key1 = generate_key();
+        let key2 = generate_key();
+        let plaintext = b"Secret message";
+
+        let ciphertext = encrypt(&key1, plaintext).unwrap();
+
+        // Decrypting with wrong key should fail
+        let result = decrypt(&key2, &ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("HMAC verification failed"));
+    }
+
+    #[test]
+    fn test_is_encrypted_with_encrypted_data() {
+        let key = generate_key();
+        let plaintext = b"Test data";
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+
+        assert!(is_encrypted(&ciphertext));
+    }
+
+    #[test]
+    fn test_is_encrypted_with_plaintext() {
+        let plaintext = b"This is not encrypted";
+        assert!(!is_encrypted(plaintext));
+    }
+
+    #[test]
+    fn test_is_encrypted_with_empty_data() {
+        assert!(!is_encrypted(b""));
+    }
+
+    #[test]
+    fn test_is_encrypted_with_too_short_data() {
+        // Data shorter than MIN_ENCRYPTED_SIZE should not be considered encrypted
+        let short_data = vec![0u8; MIN_ENCRYPTED_SIZE - 1];
+        assert!(!is_encrypted(&short_data));
+    }
+
+    #[test]
+    fn test_is_encrypted_with_wrong_magic_header() {
+        // Data of correct size but wrong magic header
+        let mut fake_encrypted = vec![0u8; MIN_ENCRYPTED_SIZE];
+        fake_encrypted[0] = 0xFF; // Wrong first byte
+        assert!(!is_encrypted(&fake_encrypted));
+    }
+
+    #[test]
+    fn test_decrypt_too_short_ciphertext() {
+        let key = generate_key();
+        let short_data = vec![0u8; MIN_ENCRYPTED_SIZE - 1];
+
+        let result = decrypt(&key, &short_data);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("too short"));
+    }
+
+    #[test]
+    fn test_decrypt_invalid_magic_header() {
+        let key = generate_key();
+        let mut fake_ciphertext = vec![0u8; MIN_ENCRYPTED_SIZE];
+        fake_ciphertext[0] = 0xFF; // Wrong magic header
+
+        let result = decrypt(&key, &fake_ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid magic header"));
+    }
+
+    #[test]
+    fn test_decrypt_wrong_version() {
+        let key = generate_key();
+        let plaintext = b"Test";
+        let mut ciphertext = encrypt(&key, plaintext).unwrap();
+
+        // Change version byte to wrong value
+        ciphertext[MAGIC_HEADER_SIZE] = 0xFF;
+
+        let result = decrypt(&key, &ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported encryption format version"));
+    }
+
+    #[test]
+    fn test_decrypt_corrupted_hmac() {
+        let key = generate_key();
+        let plaintext = b"Test data";
+        let mut ciphertext = encrypt(&key, plaintext).unwrap();
+
+        // Corrupt the HMAC (last 32 bytes)
+        let last_idx = ciphertext.len() - 1;
+        ciphertext[last_idx] ^= 0xFF; // Flip bits
+
+        let result = decrypt(&key, &ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("HMAC verification failed"));
+    }
+
+    #[test]
+    fn test_decrypt_corrupted_encrypted_data() {
+        let key = generate_key();
+        let plaintext = b"Test data";
+        let mut ciphertext = encrypt(&key, plaintext).unwrap();
+
+        // Corrupt the encrypted data (but not the HMAC)
+        let data_start = ENCRYPTED_HEADER_SIZE;
+        ciphertext[data_start] ^= 0xFF; // Flip bits in encrypted data
+
+        // This should fail HMAC verification
+        let result = decrypt(&key, &ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("HMAC verification failed"));
+    }
+
+    #[test]
+    fn test_decrypt_corrupted_iv() {
+        let key = generate_key();
+        let plaintext = b"Test data";
+        let mut ciphertext = encrypt(&key, plaintext).unwrap();
+
+        // Corrupt the IV
+        let iv_start = MAGIC_HEADER_SIZE + 1;
+        ciphertext[iv_start] ^= 0xFF;
+
+        // This should fail HMAC verification
+        let result = decrypt(&key, &ciphertext);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("HMAC verification failed"));
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_multibyte_utf8() {
+        let key = generate_key();
+        let plaintext = "Hello, 世界! 🌍".as_bytes();
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_newlines() {
+        let key = generate_key();
+        let plaintext = b"Line 1\nLine 2\nLine 3\n";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_null_bytes() {
+        let key = generate_key();
+        let plaintext = b"Before\0After\0\0End";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_encrypted_output_structure() {
+        let key = generate_key();
+        let plaintext = b"Test";
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+
+        // Check structure: magic header + version + IV + encrypted data + HMAC
+        assert!(ciphertext.len() >= MIN_ENCRYPTED_SIZE);
+        assert_eq!(&ciphertext[0..MAGIC_HEADER_SIZE], MAGIC_HEADER);
+        assert_eq!(ciphertext[MAGIC_HEADER_SIZE], VERSION);
+
+        // Check that HMAC is at the end
+        let expected_hmac_start = ciphertext.len() - HMAC_SIZE;
+        assert!(expected_hmac_start > ENCRYPTED_HEADER_SIZE);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_exact_min_size_plaintext() {
+        // Test with plaintext that results in exactly MIN_ENCRYPTED_SIZE when encrypted
+        let key = generate_key();
+        // This is tricky - we need plaintext that when encrypted gives us exactly the minimum
+        // But since encryption adds header, any plaintext will be larger than MIN_ENCRYPTED_SIZE
+        // So let's just test with a very small plaintext
+        let plaintext = b"x";
+
+        let ciphertext = encrypt(&key, plaintext).unwrap();
+        assert!(ciphertext.len() >= MIN_ENCRYPTED_SIZE);
+
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+        assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_multiple_encrypt_decrypt_operations() {
+        let key = generate_key();
+        let plaintexts = vec![
+            b"First message".as_slice(),
+            b"Second message".as_slice(),
+            b"Third message".as_slice(),
+        ];
+
+        for plaintext in plaintexts {
+            let ciphertext = encrypt(&key, plaintext).unwrap();
+            let decrypted = decrypt(&key, &ciphertext).unwrap();
+            assert_eq!(plaintext, decrypted.as_slice());
+        }
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_all_zeros() {
+        let key = generate_key();
+        let plaintext = vec![0u8; 100];
+
+        let ciphertext = encrypt(&key, &plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_all_ones() {
+        let key = generate_key();
+        let plaintext = vec![0xFFu8; 100];
+
+        let ciphertext = encrypt(&key, &plaintext).unwrap();
+        let decrypted = decrypt(&key, &ciphertext).unwrap();
+
+        assert_eq!(plaintext, decrypted);
+    }
+}
