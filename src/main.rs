@@ -171,7 +171,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
     // Decrypt existing encrypted files in working directory
-    decrypt_working_files(&repo_path, &key).context("Failed to decrypt existing files")?;
+    decrypt_working_files(&repo_path).context("Failed to decrypt existing files")?;
 
     println!("Repository unlocked successfully");
     Ok(())
@@ -250,9 +250,10 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
     }
 }
 
-/// Decrypt all encrypted files in the working directory
-fn decrypt_working_files(repo_path: &Path, key: &[u8; 32]) -> Result<()> {
-    use std::fs;
+/// Decrypt all encrypted files in the working directory by re-checking them out from HEAD
+/// This triggers the git smudge filter which will automatically decrypt them
+fn decrypt_working_files(repo_path: &Path) -> Result<()> {
+    use git2::{build::CheckoutBuilder, Repository};
 
     // Find all files that have the encryption filter attribute set
     let encrypted_files = git::find_encrypted_files(repo_path)?;
@@ -263,47 +264,28 @@ fn decrypt_working_files(repo_path: &Path, key: &[u8; 32]) -> Result<()> {
 
     println!("Decrypting {} file(s)...", encrypted_files.len());
 
-    for file_path in encrypted_files {
-        let full_path = repo_path.join(&file_path);
+    // Open the repository
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
-        // Skip if file doesn't exist
-        if !full_path.exists() {
-            continue;
-        }
+    // Build checkout options to only checkout specific paths
+    let mut checkout_builder = CheckoutBuilder::new();
+    checkout_builder.force(); // Force checkout even if files have local changes
 
-        // Read encrypted content
-        let ciphertext = match fs::read(&full_path) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("Warning: Failed to read {}: {}", file_path.display(), e);
-                continue;
-            }
-        };
+    // Add each encrypted file path to the checkout
+    for file_path in &encrypted_files {
+        let file_str = file_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path: {}", file_path.display()))?;
+        checkout_builder.path(file_str);
+    }
 
-        // Skip if not encrypted (no magic header)
-        if !crypto::is_encrypted(&ciphertext) {
-            continue;
-        }
+    // Checkout files from HEAD - this will trigger the smudge filter automatically
+    repo.checkout_head(Some(&mut checkout_builder))
+        .context("Failed to checkout files from HEAD")?;
 
-        // Decrypt the file
-        match crypto::decrypt(key, &ciphertext) {
-            Ok(plaintext) => {
-                // Write decrypted content
-                if let Err(e) = fs::write(&full_path, &plaintext) {
-                    eprintln!(
-                        "Warning: Failed to write decrypted {}: {}",
-                        file_path.display(),
-                        e
-                    );
-                } else {
-                    println!("  Decrypted: {}", file_path.display());
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to decrypt {}: {}", file_path.display(), e);
-                continue;
-            }
-        }
+    // Print success message for each file
+    for file_path in &encrypted_files {
+        println!("  Decrypted: {}", file_path.display());
     }
 
     Ok(())
