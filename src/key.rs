@@ -1,6 +1,7 @@
 use crate::crypto;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
+use git2::Repository;
 use std::path::Path;
 
 const KEY_SIZE: usize = 32;
@@ -37,8 +38,6 @@ pub fn key_from_base64(key_b64: &str) -> Result<[u8; KEY_SIZE]> {
 
 /// Load the encryption key from git config
 pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; KEY_SIZE]> {
-    use git2::Repository;
-
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let config = repo.config().context("Failed to get git config")?;
@@ -52,8 +51,6 @@ pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; KEY_SIZE]> {
 
 /// Store the encryption key in git config
 pub fn store_key_in_config(repo_path: &Path, key: &[u8; KEY_SIZE]) -> Result<()> {
-    use git2::Repository;
-
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
@@ -68,8 +65,6 @@ pub fn store_key_in_config(repo_path: &Path, key: &[u8; KEY_SIZE]) -> Result<()>
 
 /// Remove the encryption key from git config
 pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
-    use git2::Repository;
-
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;

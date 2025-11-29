@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use git2::Repository;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use walkdir::WalkDir;
 
 pub const FILTER_NAME: &str = "a8c-git-secrets";
 pub const DIFF_NAME: &str = "a8c-git-secrets";
@@ -141,8 +144,6 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
 
 /// Re-checkout encrypted files from the repository (to get raw encrypted data)
 pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
-    use std::process::Command;
-
     let encrypted_files = find_encrypted_files(repo_path)?;
 
     if encrypted_files.is_empty() {
@@ -204,8 +205,6 @@ pub fn is_file_encrypted(repo_path: &Path, file_path: &Path) -> Result<bool> {
 /// Find all files in the working directory that have the encryption filter attribute set
 /// Uses git2's attribute checking to properly handle .gitattributes patterns
 pub fn find_encrypted_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
-    use walkdir::WalkDir;
-
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut encrypted_files = Vec::new();
@@ -263,8 +262,6 @@ pub fn dirty_files(repo_path: &Path, files: &[PathBuf]) -> Result<Vec<PathBuf>> 
 /// Decrypt the given files in-place
 /// This applies the smudge filter logic to decrypt files that are currently encrypted
 pub fn decrypt_files(repo_path: &Path, encrypted_files: &[PathBuf], key: &[u8; 32]) -> Result<()> {
-    use std::fs;
-
     if encrypted_files.is_empty() {
         return Ok(());
     }
