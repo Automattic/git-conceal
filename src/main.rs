@@ -5,7 +5,7 @@ mod key;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::{io::Read, path::Path};
+use std::io::Read;
 use indoc::indoc;
 
 #[derive(Parser)]
@@ -143,6 +143,19 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
+    // Find encrypted files and check if any have local modifications
+    let encrypted_files = git::find_encrypted_files(&repo_path)?;
+    let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
+
+    if !dirty_files.is_empty() {
+        eprintln!("Error: Cannot unlock repository with local modifications in encrypted files:");
+        for file in &dirty_files {
+            eprintln!("  {}", file.display());
+        }
+        eprintln!("\nPlease commit or stash your changes before unlocking.");
+        anyhow::bail!("Repository has dirty encrypted files");
+    }
+
     // Read key from input
     let base64_key: String = if key_source == "-" {
         let mut input = String::new();
@@ -171,7 +184,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
     // Decrypt existing encrypted files in working directory
-    decrypt_working_files(&repo_path).context("Failed to decrypt existing files")?;
+    git::decrypt_files(&repo_path, &encrypted_files, &key).context("Failed to decrypt existing files")?;
 
     println!("Repository unlocked successfully");
     Ok(())
@@ -250,43 +263,3 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
     }
 }
 
-/// Decrypt all encrypted files in the working directory by re-checking them out from HEAD
-/// This triggers the git smudge filter which will automatically decrypt them
-fn decrypt_working_files(repo_path: &Path) -> Result<()> {
-    use git2::{build::CheckoutBuilder, Repository};
-
-    // Find all files that have the encryption filter attribute set
-    let encrypted_files = git::find_encrypted_files(repo_path)?;
-
-    if encrypted_files.is_empty() {
-        return Ok(());
-    }
-
-    println!("Decrypting {} file(s)...", encrypted_files.len());
-
-    // Open the repository
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-
-    // Build checkout options to only checkout specific paths
-    let mut checkout_builder = CheckoutBuilder::new();
-    checkout_builder.force(); // Force checkout even if files have local changes
-
-    // Add each encrypted file path to the checkout
-    for file_path in &encrypted_files {
-        let file_str = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path: {}", file_path.display()))?;
-        checkout_builder.path(file_str);
-    }
-
-    // Checkout files from HEAD - this will trigger the smudge filter automatically
-    repo.checkout_head(Some(&mut checkout_builder))
-        .context("Failed to checkout files from HEAD")?;
-
-    // Print success message for each file
-    for file_path in &encrypted_files {
-        println!("  Decrypted: {}", file_path.display());
-    }
-
-    Ok(())
-}

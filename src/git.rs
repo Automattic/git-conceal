@@ -229,3 +229,72 @@ pub fn find_encrypted_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
 
     Ok(encrypted_files)
 }
+
+/// Check if any of the given files have local modifications (are "dirty")
+pub fn dirty_files(repo_path: &Path, files: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+
+    let mut dirty_files = Vec::new();
+
+    // Check status of each file
+    for file_path in files {
+        // Get file status
+        let status = repo.status_file(file_path.as_path())
+            .with_context(|| format!("Failed to get status for {}", file_path.display()))?;
+
+        // Check if file has any modifications (workdir or index)
+        if status.intersects(
+            git2::Status::WT_MODIFIED
+                | git2::Status::WT_DELETED
+                | git2::Status::WT_TYPECHANGE
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::INDEX_DELETED
+                | git2::Status::INDEX_TYPECHANGE
+                | git2::Status::INDEX_RENAMED
+                | git2::Status::INDEX_NEW,
+        ) {
+            dirty_files.push(file_path.clone());
+        }
+    }
+
+    Ok(dirty_files)
+}
+
+/// Decrypt the given files in-place
+/// This applies the smudge filter logic to decrypt files that are currently encrypted
+pub fn decrypt_files(repo_path: &Path, encrypted_files: &[PathBuf], key: &[u8; 32]) -> Result<()> {
+    use std::fs;
+
+    if encrypted_files.is_empty() {
+        return Ok(());
+    }
+
+    println!("Decrypting {} file(s)...", encrypted_files.len());
+
+    // For each encrypted file, read it from disk, decrypt it, and write it back
+    for file_path in encrypted_files {
+        let full_path = repo_path.join(file_path);
+        // Read the file content
+        let ciphertext = match fs::read(&full_path) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Warning: Failed to read {}: {}", file_path.display(), e);
+                continue;
+            }
+        };
+
+        if !crate::crypto::is_encrypted(&ciphertext) {
+            continue;
+        }
+
+        let plaintext = crate::crypto::decrypt(key, &ciphertext)
+            .with_context(|| format!("Failed to decrypt {}", file_path.display()))?;
+
+        fs::write(&full_path, &plaintext)
+            .with_context(|| format!("Failed to write decrypted file: {}", file_path.display()))?;
+
+        println!("  Decrypted: {}", file_path.display());
+    }
+
+    Ok(())
+}
