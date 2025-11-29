@@ -190,9 +190,9 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         );
 
         if !encrypted_files.is_empty() {
-            println!("\nEncrypted files:");
+            println!("\nFiles configured for encryption by git filter:");
             for file in &encrypted_files {
-                println!("  {}", file.display());
+                println!("  🔒 {}", file.display());
             }
         } else {
             println!("\nNo encrypted files found in working directory");
@@ -203,11 +203,11 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
             let file_path = std::path::Path::new(file_str);
             let is_encrypted = git::is_file_encrypted(&repo_path, file_path)?;
             let status = if is_encrypted {
-                "encrypted"
+                "🔒 Encrypted by git filter"
             } else {
-                "not encrypted"
+                "👀 Not encrypted"
             };
-            println!("{}: {}", file_str, status);
+            println!("{:20}: {}", file_str, status);
         }
     }
 
