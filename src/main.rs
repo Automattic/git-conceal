@@ -19,16 +19,38 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a repository for encryption (generate key and set up filters)
+    // Init
+    #[command(
+        about = "Initialize a repository for encryption",
+        long_about = "Use this command to set up a repository to start using a8c-git-secrets. \n\
+                      It generates an encryption key, sets up git filters locally for the repository, \
+                      and provides instructions to save the key and how to start adding files to be encrypted."
+    )]
     Init,
-    /// Unlock a repository with a key (from stdin, file, or environment variable)
+    // Unlock
+    #[command(
+        about = "Unlock an encrypted repository and decrypt existing files",
+        long_about = "Use this command to unlock a repository that already contains encrypted files. \n\
+                      It sets up git filters, saves the key you provide in the git config, \
+                      and decrypts any encrypted files in the working directory."
+    )]
     Unlock {
         /// Key source: '-' for stdin, 'env:VARNAME' for environment variable, or file path
         key_source: String,
     },
-    /// Lock a repository (remove key from config)
+    // Lock
+    #[command(
+        about = "Lock a decrypted repository and restore files to their encrypted state",
+        long_about = "Use this command to remove the encryption key and git filters from the local git config \
+                      of an unlocked repository, and to restore files to their encrypted state."
+    )]
     Lock,
-    /// Show encryption status
+    // Status
+    #[command(
+        about = "Show encryption status of the repository and encrypted files",
+        long_about = "Use this command to show the encryption status of the repository and encrypted files.\n\
+                      If file paths are provided, it shows the encryption status of the specific files only."
+    )]
     Status {
         /// Files to check (if empty, shows repository status)
         #[arg(value_name = "FILE")]
