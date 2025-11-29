@@ -149,7 +149,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
 
     if !dirty_files.is_empty() {
-        eprintln!("Error: Cannot unlock repository with local modifications in encrypted files:");
+        eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
         for file in &dirty_files {
             eprintln!("  {}", file.display());
         }
@@ -157,8 +157,8 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         anyhow::bail!("Repository has dirty encrypted files");
     }
 
-    // Read key from input
-    let base64_key: String = if key_source == "-" {
+    let key_b64: String = if key_source == "-" {
+        // Read from stdin
         let mut input = String::new();
         std::io::stdin()
             .read_to_string(&mut input)
@@ -176,7 +176,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         std::fs::read_to_string(&key_source)
             .with_context(|| format!("Failed to read key from file: {}", key_source))?
     };
-    let key = key::key_from_base64(base64_key.trim()).context("Failed to decode key")?;
+    let key = key::key_from_base64(key_b64.trim()).context("Failed to decode key")?;
 
     // Store key in git config
     key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;
