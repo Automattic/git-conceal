@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use git2::Repository;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
@@ -142,37 +141,56 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Re-checkout encrypted files from the repository (to get raw encrypted data)
-pub fn recheckout_encrypted_files(repo_path: &Path) -> Result<()> {
-    let encrypted_files = find_encrypted_files(repo_path)?;
-
-    if encrypted_files.is_empty() {
+/// Force re-checkout of files from the repository
+/// Removes files from index and checks them out from HEAD, which will trigger git filters
+///  - To restore the files to their encrypted state after removing filters (during lock)
+///  - Or to have the files decrypted after adding filters and key (during unlock)
+pub fn force_recheckout(repo_path: &Path, files: Vec<PathBuf>) -> Result<()> {
+    if files.is_empty() {
         return Ok(());
     }
 
-    println!(
-        "Re-checking out {} encrypted file(s)...",
-        encrypted_files.len()
-    );
+    println!("Re-checking out {} encrypted file(s)...", files.len());
 
-    // Use git checkout to restore files from HEAD
-    // This will get the raw encrypted data from the repository
-    for file_path in &encrypted_files {
-        let file_str = file_path.to_string_lossy().to_string();
-        let status = Command::new("git")
-            .arg("checkout")
-            .arg("HEAD")
-            .arg("--")
-            .arg(&file_str)
-            .current_dir(repo_path)
-            .status()
-            .context("Failed to execute git checkout")?;
+    // NOTE: `git2`'s `checkout_head` doesn't seem to apply the smudge filter (bug in the implementation?)
+    //       despite all our efforts and use of `disable_filters(false)`.
+    //       This is why this method is implemented with `Command::new("git")` instead of using `git2` API.
 
-        if !status.success() {
-            eprintln!("Warning: Failed to re-checkout {}", file_path.display());
-        } else {
-            println!("  Re-checked out: {}", file_path.display());
-        }
+    // Step 1: Remove files from the index (equivalent to `git rm --cached <files>`)
+    let mut rm_cmd = Command::new("git");
+    rm_cmd.arg("rm").arg("--cached").current_dir(repo_path);
+    for file_path in &files {
+        rm_cmd.arg(file_path.as_path());
+    }
+    rm_cmd
+        .output()
+        .context("Failed to execute git rm --cached")?;
+
+    // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
+    // This will trigger git filters (smudge filter if filters are configured)
+    let mut checkout_cmd = Command::new("git");
+    checkout_cmd
+        .arg("checkout")
+        .arg("HEAD")
+        .arg("--")
+        .current_dir(repo_path);
+    for file_path in &files {
+        checkout_cmd.arg(file_path.as_path());
+    }
+    let checkout_output = checkout_cmd
+        .output()
+        .context("Failed to execute git checkout command")?;
+    if !checkout_output.status.success() {
+        let stderr = String::from_utf8_lossy(&checkout_output.stderr);
+        anyhow::bail!(
+            "git checkout HEAD -- <files> failed: {}\nstderr: {}",
+            checkout_output.status,
+            stderr
+        );
+    }
+
+    for file_path in &files {
+        println!("  Re-checked out: {}", file_path.display());
     }
 
     Ok(())
@@ -257,41 +275,4 @@ pub fn dirty_files(repo_path: &Path, files: &[PathBuf]) -> Result<Vec<PathBuf>> 
     }
 
     Ok(dirty_files)
-}
-
-/// Decrypt the given files in-place
-/// This applies the smudge filter logic to decrypt files that are currently encrypted
-pub fn decrypt_files(repo_path: &Path, encrypted_files: &[PathBuf], key: &[u8; 32]) -> Result<()> {
-    if encrypted_files.is_empty() {
-        return Ok(());
-    }
-
-    println!("Decrypting {} file(s)...", encrypted_files.len());
-
-    // For each encrypted file, read it from disk, decrypt it, and write it back
-    for file_path in encrypted_files {
-        let full_path = repo_path.join(file_path);
-        // Read the file content
-        let ciphertext = match fs::read(&full_path) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("Warning: Failed to read {}: {}", file_path.display(), e);
-                continue;
-            }
-        };
-
-        if !crate::crypto::is_encrypted(&ciphertext) {
-            continue;
-        }
-
-        let plaintext = crate::crypto::decrypt(key, &ciphertext)
-            .with_context(|| format!("Failed to decrypt {}", file_path.display()))?;
-
-        fs::write(&full_path, &plaintext)
-            .with_context(|| format!("Failed to write decrypted file: {}", file_path.display()))?;
-
-        println!("  Decrypted: {}", file_path.display());
-    }
-
-    Ok(())
 }

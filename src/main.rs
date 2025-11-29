@@ -184,8 +184,9 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
-    // Decrypt existing encrypted files in working directory
-    git::decrypt_files(&repo_path, &encrypted_files, &key).context("Failed to decrypt existing files")?;
+    // Force re-checkout of encrypted files to trigger smudge filter (decrypt them)
+    git::force_recheckout(&repo_path, encrypted_files)
+        .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository unlocked successfully");
     Ok(())
@@ -195,17 +196,20 @@ fn cmd_lock() -> Result<()> {
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
+    // Find encrypted files before removing filters
+    let encrypted_files = git::find_encrypted_files(&repo_path)?;
+
     // Remove git filter configuration first (so git won't try to decrypt on checkout)
     git::remove_filters(&repo_path).context("Failed to remove git filters")?;
 
     // Re-checkout encrypted files to get raw encrypted data from repository
-    // This must be done after removing filters, otherwise git will try to decrypt
-    git::recheckout_encrypted_files(&repo_path).context("Failed to re-checkout encrypted files")?;
+    git::force_recheckout(&repo_path, encrypted_files)
+        .context("Failed to re-checkout encrypted files")?;
 
-    // Remove the encryption key last
+    // Remove the encryption key
     key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
 
-    println!("Repository locked (key and filters removed, files re-checked out)");
+    println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
     Ok(())
 }
 
