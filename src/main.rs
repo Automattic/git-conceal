@@ -96,15 +96,16 @@ fn cmd_init() -> Result<()> {
 
     // Check if already initialized
     if git::filters_configured(&repo_path)? {
-        eprintln!("Repository is already initialized for a8c-git-secrets");
+        eprintln!("Repository is already initialized for a8c-git-secrets (filters already configured)");
         return Ok(());
+    }
+    if git::is_unlocked(&repo_path)? {
+        anyhow::bail!("Repository is already configured and unlocked (key in git config)");
     }
 
     // Generate a new key
     let key = key::generate_key();
     let key_b64 = key::key_to_base64(&key);
-
-    // Store key in git config
     key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;
 
     // Set up git filters
@@ -214,12 +215,12 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
 
     if files.is_empty() {
         // Show repository status
-        let is_locked = git::is_locked(&repo_path)?;
+        let is_unlocked = git::is_unlocked(&repo_path)?;
         let filters_configured = git::filters_configured(&repo_path)?;
         let encrypted_files = git::find_encrypted_files(&repo_path)?;
 
         println!("Repository: {}", repo_path.display());
-        println!("Status: {}", if is_locked { "locked" } else { "unlocked" });
+        println!("Status: {}", if is_unlocked { "unlocked" } else { "locked" });
         println!(
             "Filters configured: {}",
             if filters_configured { "yes" } else { "no" }

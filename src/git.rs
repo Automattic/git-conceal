@@ -119,11 +119,11 @@ pub fn filters_configured(repo_path: &Path) -> Result<bool> {
 }
 
 /// Check if repository is locked (no key in config)
-pub fn is_locked(repo_path: &Path) -> Result<bool> {
-    // Try to load the key - if it fails, the repository is locked
+pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
+    // Try to load the key - if it succeeds, the repository is unlocked
     match crate::key::load_key_from_config(repo_path) {
-        Ok(_) => Ok(false), // Key exists, repository is unlocked
-        Err(_) => Ok(true), // Key doesn't exist or can't be loaded, repository is locked
+        Ok(_) => Ok(true), // Key exists, repository is unlocked
+        Err(_) => Ok(false), // Key doesn't exist or can't be loaded, repository is locked
     }
 }
 
