@@ -1,14 +1,9 @@
-use crate::crypto;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
-use git2::Repository;
 use std::fs;
 use std::io::Read;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
-
-/// Filename for the encryption key file stored in .git directory
-const KEY_FILE_NAME: &str = "a8c-git-secrets.key";
+use std::path::Path;
 
 /// Encryption key for a8c-git-secrets
 ///
@@ -16,80 +11,26 @@ const KEY_FILE_NAME: &str = "a8c-git-secrets.key";
 /// The underlying representation is only exposed when needed for cryptographic operations.
 #[derive(Clone)]
 pub struct Key {
-    bytes: [u8; crypto::KEY_SIZE],
+    bytes: [u8; Self::KEY_SIZE],
 }
 
 impl Key {
+    /// Size of the encryption key in bytes (256 bits for AES-256)
+    pub const KEY_SIZE: usize = 32;
+
+    /// Create a new Key from raw bytes
+    ///
+    /// This is primarily used internally when constructing keys from various sources.
+    pub(crate) fn from_bytes(bytes: [u8; Self::KEY_SIZE]) -> Self {
+        Self { bytes }
+    }
+
     /// Generate a new random encryption key
     pub fn generate() -> Self {
-        Self {
-            bytes: crypto::generate_key(),
-        }
-    }
-
-    /// Load the encryption key from the key file in .git directory
-    pub fn load(repo_path: &Path) -> Result<Self> {
-        let key_file = get_key_file_path(repo_path)?;
-
-        read_key_from_file(&key_file).with_context(|| {
-            format!(
-                "Encryption key not found at {}. Run 'a8c-git-secrets unlock' first.",
-                key_file.display()
-            )
-        })
-    }
-
-    /// Store the encryption key in a file in the .git directory with secure permissions
-    pub fn store(&self, repo_path: &Path) -> Result<()> {
-        let key_file = get_key_file_path(repo_path)?;
-
-        // Write the key as raw bytes to the file
-        fs::write(&key_file, self.bytes)
-            .with_context(|| format!("Failed to write key file: {}", key_file.display()))?;
-
-        // Set secure file permissions (read/write for owner only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&key_file)
-                .with_context(|| {
-                    format!(
-                        "Failed to get metadata for key file: {}",
-                        key_file.display()
-                    )
-                })?
-                .permissions();
-            perms.set_mode(0o600); // rw------- (owner read/write only)
-            fs::set_permissions(&key_file, perms).with_context(|| {
-                format!(
-                    "Failed to set permissions on key file: {}",
-                    key_file.display()
-                )
-            })?;
-        }
-
-        #[cfg(windows)]
-        {
-            // On Windows, file permissions work differently through ACLs
-            // The file will have default permissions which are typically secure
-            // in a .git directory that's already protected
-            // Note: More sophisticated Windows ACL manipulation would require winapi crate
-        }
-
-        Ok(())
-    }
-
-    /// Remove the encryption key file from the .git directory
-    pub fn remove(repo_path: &Path) -> Result<()> {
-        let key_file = get_key_file_path(repo_path)?;
-
-        // Remove the key file, but it's okay if it doesn't exist
-        if key_file.exists() {
-            fs::remove_file(&key_file)
-                .with_context(|| format!("Failed to remove key file: {}", key_file.display()))?;
-        }
-
-        Ok(())
+        let bytes_vec = crate::crypto::generate_key_bytes(Self::KEY_SIZE);
+        let mut bytes = [0u8; Self::KEY_SIZE];
+        bytes.copy_from_slice(&bytes_vec);
+        Self::from_bytes(bytes)
     }
 
     /// Export key as base64 string
@@ -103,6 +44,14 @@ impl Key {
             .decode(key_b64)
             .context("Failed to decode base64 key")?;
         bytes_to_key(key_bytes).context("Invalid key size from base64")
+    }
+
+    /// Read encryption key from a file (raw binary format, 32 bytes)
+    pub fn from_file(file_path: &Path) -> Result<Self> {
+        let key_bytes = fs::read(file_path)
+            .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
+        bytes_to_key(key_bytes)
+            .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
     }
 
     /// Read encryption key from various sources
@@ -132,8 +81,7 @@ impl Key {
             Self::from_base64(key_b64.trim())
         } else {
             // Read from file (raw binary format)
-            read_key_from_file(Path::new(key_source))
-                .with_context(|| format!("Failed to read key from file: {}", key_source))
+            Self::from_file(Path::new(key_source))
         }
     }
 
@@ -141,44 +89,30 @@ impl Key {
     ///
     /// This is primarily used for cryptographic operations that need direct access
     /// to the raw key material.
-    pub fn as_bytes(&self) -> &[u8; crypto::KEY_SIZE] {
+    pub fn as_bytes(&self) -> &[u8; Self::KEY_SIZE] {
         &self.bytes
     }
 }
 
 impl Deref for Key {
-    type Target = [u8; crypto::KEY_SIZE];
+    type Target = [u8; Self::KEY_SIZE];
 
     fn deref(&self) -> &Self::Target {
         &self.bytes
     }
 }
 
-/// Get the path to the key file in the .git directory
-fn get_key_file_path(repo_path: &Path) -> Result<PathBuf> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-    let git_dir = repo.path();
-    Ok(git_dir.join(KEY_FILE_NAME))
-}
-
 /// Convert a byte vector to a key array, validating the length
 fn bytes_to_key(key_bytes: Vec<u8>) -> Result<Key> {
-    if key_bytes.len() != crypto::KEY_SIZE {
+    if key_bytes.len() != Key::KEY_SIZE {
         anyhow::bail!(
             "Invalid key size: expected {} bytes, got {}",
-            crypto::KEY_SIZE,
+            Key::KEY_SIZE,
             key_bytes.len()
         );
     }
 
-    let mut bytes = [0u8; crypto::KEY_SIZE];
+    let mut bytes = [0u8; Key::KEY_SIZE];
     bytes.copy_from_slice(&key_bytes);
-    Ok(Key { bytes })
-}
-
-/// Read encryption key from a file (raw binary format)
-fn read_key_from_file(file_path: &Path) -> Result<Key> {
-    let key_bytes = fs::read(file_path)
-        .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
-    bytes_to_key(key_bytes)
+    Ok(Key::from_bytes(bytes))
 }

@@ -1,3 +1,4 @@
+use crate::key;
 use aes::Aes256;
 use anyhow::{Context, Result};
 use ctr::cipher::{KeyIvInit, StreamCipher};
@@ -22,25 +23,22 @@ const HMAC_SIZE: usize = 32; // SHA-256 HMAC output size
 const ENCRYPTED_HEADER_SIZE: usize = MAGIC_HEADER_SIZE + 1 + IV_SIZE; // magic + version + IV
 const MIN_ENCRYPTED_SIZE: usize = ENCRYPTED_HEADER_SIZE + HMAC_SIZE; // minimum size with HMAC
 
-/// Size of the encryption key in bytes (256 bits for AES-256)
-pub const KEY_SIZE: usize = 32;
-
 type HmacSha256 = Hmac<Sha256>;
 
-/// Generate a random 256-bit key for AES-256-CTR
-pub fn generate_key() -> [u8; KEY_SIZE] {
-    let mut key = [0u8; KEY_SIZE];
+/// Generate random key bytes of the specified size
+pub fn generate_key_bytes(size: usize) -> Vec<u8> {
+    let mut bytes = vec![0u8; size];
     rand::rngs::OsRng
-        .try_fill_bytes(&mut key)
-        .expect("Failed to generate random key from OS RNG");
-    key
+        .try_fill_bytes(&mut bytes)
+        .expect("Failed to generate random key bytes from OS RNG");
+    bytes
 }
 
 /// Derive HMAC key from encryption key using HKDF (HMAC-based Key Derivation Function)
 /// This provides proper key separation and follows cryptographic best practices.
-fn derive_hmac_key(encryption_key: &[u8; KEY_SIZE]) -> [u8; KEY_SIZE] {
-    let hkdf = Hkdf::<Sha256>::new(None, encryption_key);
-    let mut hmac_key = [0u8; KEY_SIZE];
+fn derive_hmac_key(encryption_key: &key::Key) -> [u8; key::Key::KEY_SIZE] {
+    let hkdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
+    let mut hmac_key = [0u8; key::Key::KEY_SIZE];
     hkdf.expand(b"a8c-git-secrets-hmac", &mut hmac_key)
         .expect("HKDF expansion failed (output length mismatch)");
     hmac_key
@@ -66,7 +64,7 @@ pub fn is_encrypted(data: &[u8]) -> bool {
 ///
 /// The HMAC is computed over: magic + version + IV + encrypted data
 /// and is used to verify the decryption key is correct.
-pub fn encrypt(key: &[u8; KEY_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
+pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     // Derive IV from SHA-256 hash of plaintext (like git-crypt uses HMAC-SHA1)
     let mut hasher = Sha256::new();
     hasher.update(plaintext);
@@ -76,7 +74,7 @@ pub fn encrypt(key: &[u8; KEY_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
     let mut iv = [0u8; IV_SIZE];
     iv.copy_from_slice(&hash[..IV_SIZE]);
 
-    let mut cipher = Ctr128BE::<Aes256>::new(key.into(), &iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), &iv.into());
     let mut buffer = plaintext.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -100,7 +98,7 @@ pub fn encrypt(key: &[u8; KEY_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
 
 /// Decrypt data using AES-256-CTR
 /// Verifies HMAC before decrypting to ensure the correct key is used.
-pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     if ciphertext.len() < MIN_ENCRYPTED_SIZE {
         anyhow::bail!("Ciphertext too short to contain header, IV, and HMAC");
     }
@@ -145,7 +143,7 @@ pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
     })?;
 
     // Decrypt the data
-    let mut cipher = Ctr128BE::<Aes256>::new(key.into(), iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), iv.into());
     let mut buffer = encrypted_data.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -156,22 +154,46 @@ pub fn decrypt(key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_generate_key() {
-        let key1 = generate_key();
-        let key2 = generate_key();
+    /// Constant test key for deterministic testing
+    const TEST_KEY1_BYTES: [u8; key::Key::KEY_SIZE] = [
+        0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd,
+        0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+        0xcd, 0xef,
+    ];
 
-        // Keys should be 32 bytes
-        assert_eq!(key1.len(), KEY_SIZE);
-        assert_eq!(key2.len(), KEY_SIZE);
+    /// Second constant test key for tests requiring different keys
+    const TEST_KEY2_BYTES: [u8; key::Key::KEY_SIZE] = [
+        0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32,
+        0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54,
+        0x32, 0x10,
+    ];
+
+    /// Get the constant test key
+    fn test_key1() -> key::Key {
+        key::Key::from_bytes(TEST_KEY1_BYTES)
+    }
+
+    /// Get the second constant test key
+    fn test_key2() -> key::Key {
+        key::Key::from_bytes(TEST_KEY2_BYTES)
+    }
+
+    #[test]
+    fn test_generate_key_bytes() {
+        let key1_bytes = generate_key_bytes(key::Key::KEY_SIZE);
+        let key2_bytes = generate_key_bytes(key::Key::KEY_SIZE);
+
+        // Keys should be the correct size
+        assert_eq!(key1_bytes.len(), key::Key::KEY_SIZE);
+        assert_eq!(key2_bytes.len(), key::Key::KEY_SIZE);
 
         // Keys should be different (very unlikely to be the same)
-        assert_ne!(key1, key2);
+        assert_ne!(key1_bytes, key2_bytes);
     }
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Hello, world! This is a test message.";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -182,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_empty_file() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -194,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_single_byte() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"a";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -205,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_very_small_file() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"hi";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -216,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_large_file() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
 
         let ciphertext = encrypt(&key, &plaintext).unwrap();
@@ -227,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_binary_data() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext: Vec<u8> = vec![0x00, 0xFF, 0x80, 0x7F, 0x01, 0xFE];
 
         let ciphertext = encrypt(&key, &plaintext).unwrap();
@@ -238,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_deterministic_encryption() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"This should encrypt to the same ciphertext";
 
         let ciphertext1 = encrypt(&key, plaintext).unwrap();
@@ -250,8 +272,8 @@ mod tests {
 
     #[test]
     fn test_different_keys_produce_different_ciphertext() {
-        let key1 = generate_key();
-        let key2 = generate_key();
+        let key1 = test_key1();
+        let key2 = test_key2();
         let plaintext = b"Same plaintext, different keys";
 
         let ciphertext1 = encrypt(&key1, plaintext).unwrap();
@@ -263,8 +285,8 @@ mod tests {
 
     #[test]
     fn test_wrong_key_fails_decryption() {
-        let key1 = generate_key();
-        let key2 = generate_key();
+        let key1 = test_key1();
+        let key2 = test_key2();
         let plaintext = b"Secret message";
 
         let ciphertext = encrypt(&key1, plaintext).unwrap();
@@ -280,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_is_encrypted_with_encrypted_data() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test data";
         let ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -315,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_too_short_ciphertext() {
-        let key = generate_key();
+        let key = test_key1();
         let short_data = vec![0u8; MIN_ENCRYPTED_SIZE - 1];
 
         let result = decrypt(&key, &short_data);
@@ -325,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_invalid_magic_header() {
-        let key = generate_key();
+        let key = test_key1();
         let mut fake_ciphertext = vec![0u8; MIN_ENCRYPTED_SIZE];
         fake_ciphertext[0] = 0xFF; // Wrong magic header
 
@@ -339,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_wrong_version() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test";
         let mut ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -356,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_corrupted_hmac() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test data";
         let mut ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -374,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_corrupted_encrypted_data() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test data";
         let mut ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -393,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_decrypt_corrupted_iv() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test data";
         let mut ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -412,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_multibyte_utf8() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = "Hello, 世界! 🌍".as_bytes();
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -423,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_newlines() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Line 1\nLine 2\nLine 3\n";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -434,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_null_bytes() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Before\0After\0\0End";
 
         let ciphertext = encrypt(&key, plaintext).unwrap();
@@ -445,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_encrypted_output_structure() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = b"Test";
         let ciphertext = encrypt(&key, plaintext).unwrap();
 
@@ -462,7 +484,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_exact_min_size_plaintext() {
         // Test with plaintext that results in exactly MIN_ENCRYPTED_SIZE when encrypted
-        let key = generate_key();
+        let key = test_key1();
         // This is tricky - we need plaintext that when encrypted gives us exactly the minimum
         // But since encryption adds header, any plaintext will be larger than MIN_ENCRYPTED_SIZE
         // So let's just test with a very small plaintext
@@ -477,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_multiple_encrypt_decrypt_operations() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintexts = vec![
             b"First message".as_slice(),
             b"Second message".as_slice(),
@@ -493,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_all_zeros() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = vec![0u8; 100];
 
         let ciphertext = encrypt(&key, &plaintext).unwrap();
@@ -504,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_all_ones() {
-        let key = generate_key();
+        let key = test_key1();
         let plaintext = vec![0xFFu8; 100];
 
         let ciphertext = encrypt(&key, &plaintext).unwrap();

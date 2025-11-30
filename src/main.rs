@@ -11,8 +11,8 @@
 
 mod crypto;
 mod filter;
-mod git;
 mod key;
+mod repo;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -105,26 +105,26 @@ fn main() -> Result<()> {
 }
 
 fn cmd_init() -> Result<()> {
-    let repo_path =
-        git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
+    let repo = repo::Repo::discover()?;
 
     // Check if already initialized
-    if git::filters_configured(&repo_path)? {
+    if repo.filters_configured()? {
         eprintln!(
             "Repository is already initialized for a8c-git-secrets (filters already configured)"
         );
         return Ok(());
     }
-    if git::is_unlocked(&repo_path)? {
+    if repo.is_unlocked()? {
         anyhow::bail!("Repository is already configured and unlocked (key file exists)");
     }
 
     // Generate a new key
     let key = key::Key::generate();
-    key.store(&repo_path).context("Failed to store key file")?;
+    repo.store_key(&key).context("Failed to store key file")?;
 
     // Set up git filters
-    git::setup_filters(&repo_path).context("Failed to set up git filters")?;
+    repo.setup_filters()
+        .context("Failed to set up git filters")?;
 
     let key_b64 = key.to_base64();
     let instructions = init_instructions(&key_b64);
@@ -134,12 +134,11 @@ fn cmd_init() -> Result<()> {
 }
 
 fn cmd_unlock(key_source: String) -> Result<()> {
-    let repo_path =
-        git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
+    let repo = repo::Repo::discover()?;
 
     // Find encrypted files and check if any have local modifications
-    let encrypted_files = git::find_encrypted_files(&repo_path)?;
-    let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
+    let encrypted_files = repo.find_encrypted_files()?;
+    let dirty_files = repo.dirty_files(&encrypted_files)?;
     if !dirty_files.is_empty() {
         eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
         for file in &dirty_files {
@@ -152,13 +151,14 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     let key = key::Key::read_from_source(&key_source)?;
 
     // Store key in key file
-    key.store(&repo_path).context("Failed to store key file")?;
+    repo.store_key(&key).context("Failed to store key file")?;
 
     // Set up git filters
-    git::setup_filters(&repo_path).context("Failed to set up git filters")?;
+    repo.setup_filters()
+        .context("Failed to set up git filters")?;
 
     // Force re-checkout of encrypted files to trigger smudge filter (decrypt them)
-    git::force_recheckout(&repo_path, encrypted_files)
+    repo.force_recheckout(encrypted_files)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository unlocked successfully");
@@ -166,13 +166,12 @@ fn cmd_unlock(key_source: String) -> Result<()> {
 }
 
 fn cmd_lock(force: bool) -> Result<()> {
-    let repo_path =
-        git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
+    let repo = repo::Repo::discover()?;
 
     // Find encrypted files and check if any have local modifications
-    let encrypted_files = git::find_encrypted_files(&repo_path)?;
+    let encrypted_files = repo.find_encrypted_files()?;
     if !force {
-        let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
+        let dirty_files = repo.dirty_files(&encrypted_files)?;
         if !dirty_files.is_empty() {
             eprintln!("Error: Cannot lock repository while there are local modifications in some encrypted files:");
             for file in &dirty_files {
@@ -184,13 +183,14 @@ fn cmd_lock(force: bool) -> Result<()> {
     }
 
     // Remove git filter configuration first (so git won't try to decrypt on checkout)
-    git::remove_filters(&repo_path).context("Failed to remove git filters")?;
+    repo.remove_filters()
+        .context("Failed to remove git filters")?;
 
     // Remove the encryption key file
-    key::Key::remove(&repo_path).context("Failed to remove key file")?;
+    repo.remove_key().context("Failed to remove key file")?;
 
     // Re-checkout encrypted files to get raw encrypted data from repository
-    git::force_recheckout(&repo_path, encrypted_files)
+    repo.force_recheckout(encrypted_files)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
@@ -198,16 +198,15 @@ fn cmd_lock(force: bool) -> Result<()> {
 }
 
 fn cmd_status(files: Vec<String>) -> Result<()> {
-    let repo_path =
-        git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
+    let repo = repo::Repo::discover()?;
 
     if files.is_empty() {
         // Show repository status
-        let is_unlocked = git::is_unlocked(&repo_path)?;
-        let filters_configured = git::filters_configured(&repo_path)?;
-        let encrypted_files = git::find_encrypted_files(&repo_path)?;
+        let is_unlocked = repo.is_unlocked()?;
+        let filters_configured = repo.filters_configured()?;
+        let encrypted_files = repo.find_encrypted_files()?;
 
-        println!("Repository: {}", repo_path.display());
+        println!("Repository: {}", repo.workdir().display());
         println!(
             "Status: {}",
             if is_unlocked { "unlocked" } else { "locked" }
@@ -229,7 +228,7 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         // Check status for specific files
         for file_str in &files {
             let file_path = std::path::Path::new(file_str);
-            let is_encrypted = git::is_file_encrypted(&repo_path, file_path)?;
+            let is_encrypted = repo.is_file_encrypted(file_path)?;
             let status = if is_encrypted {
                 "🔒 Encrypted by git filter"
             } else {
@@ -243,13 +242,12 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
 }
 
 fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
-    let repo_path =
-        git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
+    let repo = repo::Repo::discover()?;
 
     match filter_cmd {
-        FilterCommands::Clean => filter::clean_filter(&repo_path),
-        FilterCommands::Smudge => filter::smudge_filter(&repo_path),
-        FilterCommands::Textconv { filename } => filter::diff_textconv(&repo_path, &filename),
+        FilterCommands::Clean => filter::clean_filter(&repo),
+        FilterCommands::Smudge => filter::smudge_filter(&repo),
+        FilterCommands::Textconv { filename } => filter::diff_textconv(&repo, &filename),
     }
 }
 
@@ -283,7 +281,7 @@ fn init_instructions(key_b64: &str) -> String {
               - Run 'a8c-git-secrets status' to validate the list of files that are encrypted.
         "#},
         key_b64 = key_b64,
-        filter = git::FILTER_NAME,
-        diff = git::DIFF_NAME,
+        filter = repo::FILTER_NAME,
+        diff = repo::DIFF_NAME,
     )
 }
