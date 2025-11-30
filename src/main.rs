@@ -158,7 +158,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         for file in &dirty_files {
             eprintln!("  {}", file.display());
         }
-        eprintln!("\nPlease commit or stash your changes before unlocking.");
+        eprintln!("\nPlease commit, stash or undo your changes before unlocking.");
         anyhow::bail!("Repository has dirty encrypted files");
     }
 
@@ -210,7 +210,7 @@ fn cmd_lock(force: bool) -> Result<()> {
             for file in &dirty_files {
                 eprintln!("  {}", file.display());
             }
-            eprintln!("\nPlease commit or stash your changes before locking, or use --force to force lock.");
+            eprintln!("\nPlease commit, stash or undo your changes before locking, or use --force to force lock.");
             anyhow::bail!("Repository has dirty encrypted files");
         }
     }
