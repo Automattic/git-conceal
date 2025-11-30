@@ -67,7 +67,16 @@ pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
-    let _ = config.remove(CONFIG_KEY_NAME);
+
+    // Remove the key, but NotFound is acceptable (key might not exist)
+    if let Err(e) = config.remove(CONFIG_KEY_NAME) {
+        if e.code() != git2::ErrorCode::NotFound {
+            return Err(anyhow::anyhow!(
+                "Failed to remove encryption key from git config: {}",
+                e
+            ));
+        }
+    }
 
     Ok(())
 }

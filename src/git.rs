@@ -70,7 +70,16 @@ pub fn filters_configured(repo_path: &Path) -> Result<bool> {
 
     match config.get_string(&format!("filter.{}.clean", FILTER_NAME)) {
         Ok(_) => Ok(true),
-        Err(_) => Ok(false),
+        Err(e) => {
+            if e.code() == git2::ErrorCode::NotFound {
+                Ok(false)
+            } else {
+                Err(anyhow::anyhow!(
+                    "Failed to check if filters are configured: {}",
+                    e
+                ))
+            }
+        }
     }
 }
 
@@ -79,10 +88,29 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
-    let _ = config.remove(&format!("filter.{}.clean", FILTER_NAME));
-    let _ = config.remove(&format!("filter.{}.smudge", FILTER_NAME));
-    let _ = config.remove(&format!("filter.{}.required", FILTER_NAME));
-    let _ = config.remove(&format!("diff.{}.textconv", DIFF_NAME));
+
+    // Remove filter configurations, collecting any errors
+    let mut errors = Vec::new();
+
+    let filter_keys = [
+        format!("filter.{}.clean", FILTER_NAME),
+        format!("filter.{}.smudge", FILTER_NAME),
+        format!("filter.{}.required", FILTER_NAME),
+        format!("diff.{}.textconv", DIFF_NAME),
+    ];
+
+    for key in &filter_keys {
+        if let Err(e) = config.remove(key) {
+            // NotFound is acceptable (config might not exist), but other errors should be reported
+            if e.code() != git2::ErrorCode::NotFound {
+                errors.push(format!("Failed to remove config key '{}': {}", key, e));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        anyhow::bail!("Failed to remove some filter configurations:\n{}", errors.join("\n"));
+    }
 
     Ok(())
 }
@@ -183,9 +211,16 @@ pub fn force_recheckout(repo_path: &Path, files: Vec<PathBuf>) -> Result<()> {
     for file_path in &files {
         rm_cmd.arg(file_path.as_path());
     }
-    rm_cmd
+    let rm_output = rm_cmd
         .output()
         .context("Failed to execute git rm --cached")?;
+    if !rm_output.status.success() {
+        anyhow::bail!(
+            "git rm --cached failed: {}\nstderr: {}",
+            rm_output.status,
+            String::from_utf8_lossy(&rm_output.stderr)
+        );
+    }
 
     // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
     // This will trigger git filters (smudge filter if filters are configured)
@@ -233,15 +268,24 @@ fn get_binary_path() -> Result<PathBuf> {
             if exe_path.is_absolute() {
                 return Ok(exe_path);
             }
+            // If we have a relative path that exists, try to make it absolute
+            if let Ok(cwd) = std::env::current_dir() {
+                let absolute = cwd.join(&exe_path);
+                if absolute.exists() {
+                    return Ok(absolute);
+                }
+            }
         }
     }
 
     // Fallback: use the binary name (git will look in PATH)
+    // This is less ideal but acceptable if the binary is in PATH
     let binary_name = if cfg!(windows) {
         "a8c-git-secrets.exe"
     } else {
         "a8c-git-secrets"
     };
+
     Ok(PathBuf::from(binary_name))
 }
 
