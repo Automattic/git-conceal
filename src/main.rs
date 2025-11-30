@@ -218,12 +218,12 @@ fn cmd_lock(force: bool) -> Result<()> {
     // Remove git filter configuration first (so git won't try to decrypt on checkout)
     git::remove_filters(&repo_path).context("Failed to remove git filters")?;
 
+    // Remove the encryption key
+    key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
+
     // Re-checkout encrypted files to get raw encrypted data from repository
     git::force_recheckout(&repo_path, encrypted_files)
         .context("Failed to re-checkout encrypted files")?;
-
-    // Remove the encryption key
-    key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
 
     println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
     Ok(())
@@ -275,8 +275,6 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
 }
 
 fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
-    // Find repository root using git2's discover function
-    // This works even when git changes directories or sets GIT_DIR
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
