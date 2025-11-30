@@ -11,14 +11,34 @@ pub const FILTER_NAME: &str = "a8c-git-secrets";
 pub const DIFF_NAME: &str = "a8c-git-secrets";
 
 /// Find the git repository root using git2's discover function
+///
+/// Returns the working directory root for non-bare repositories.
+///
+/// # Errors
+/// Returns an error if the repository is bare. This tool requires a working directory
+/// to encrypt/decrypt files, so bare repositories are not supported.
 pub fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
     let repo = Repository::discover(start_path).context("Not a git repository")?;
 
-    // Get the workdir (working directory) if available, otherwise use the gitdir's parent
+    // Reject bare repositories - this tool needs a working directory
+    if repo.is_bare() {
+        anyhow::bail!(
+            "Bare repositories are not supported. \
+             This tool encrypts/decrypts files in the working directory, \
+             which bare repositories don't have. \
+             Please use a non-bare repository with a checked-out working tree."
+        );
+    }
+
+    // Get the working directory root
     let repo_path = repo
         .workdir()
-        .or_else(|| repo.path().parent())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine repository root"))?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Repository has no working directory. \
+                 This tool requires a non-bare repository with a checked-out working tree."
+            )
+        })?
         .to_path_buf();
 
     Ok(repo_path)
