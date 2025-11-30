@@ -1,7 +1,6 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
 
 # IDE
 .idea/
@@ -13,4 +12,3 @@ Cargo.lock
 # OS
 .DS_Store
 Thumbs.db
-

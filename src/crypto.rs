@@ -4,7 +4,7 @@ use ctr::cipher::{KeyIvInit, StreamCipher};
 use ctr::Ctr128BE;
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
-use rand::RngCore;
+use rand::TryRngCore;
 use sha2::{Digest, Sha256};
 
 /// Encrypted format:
@@ -30,7 +30,9 @@ type HmacSha256 = Hmac<Sha256>;
 /// Generate a random 256-bit key for AES-256-CTR
 pub fn generate_key() -> [u8; KEY_SIZE] {
     let mut key = [0u8; KEY_SIZE];
-    rand::rngs::OsRng.fill_bytes(&mut key);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut key)
+        .expect("Failed to generate random key from OS RNG");
     key
 }
 
