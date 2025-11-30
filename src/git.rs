@@ -221,12 +221,6 @@ pub fn force_recheckout(repo_path: &Path, files: Vec<PathBuf>) -> Result<()> {
 
 /// Get the path to the a8c-git-secrets binary
 fn get_binary_path() -> Result<PathBuf> {
-    let binary_name = if cfg!(windows) {
-        "a8c-git-secrets.exe"
-    } else {
-        "a8c-git-secrets"
-    };
-
     // First, try using the current executable path (most reliable)
     if let Ok(exe_path) = std::env::current_exe() {
         // Resolve any symlinks to get the actual path
@@ -242,23 +236,12 @@ fn get_binary_path() -> Result<PathBuf> {
         }
     }
 
-    // Fallback: try to find in PATH
-    if let Ok(path) = std::env::var("PATH") {
-        for dir in path.split(if cfg!(windows) { ";" } else { ":" }) {
-            let candidate = Path::new(dir).join(binary_name);
-            if candidate.exists() {
-                // Try to get absolute path
-                if let Ok(absolute) = candidate.canonicalize() {
-                    return Ok(absolute);
-                }
-                if candidate.is_absolute() {
-                    return Ok(candidate);
-                }
-            }
-        }
-    }
-
-    // Last resort: use the binary name (git will look in PATH)
+    // Fallback: use the binary name (git will look in PATH)
+    let binary_name = if cfg!(windows) {
+        "a8c-git-secrets.exe"
+    } else {
+        "a8c-git-secrets"
+    };
     Ok(PathBuf::from(binary_name))
 }
 
