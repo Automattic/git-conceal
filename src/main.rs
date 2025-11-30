@@ -44,7 +44,11 @@ enum Commands {
         long_about = "Use this command to remove the encryption key and git filters from the local git config \
                       of an unlocked repository, and to restore files to their encrypted state."
     )]
-    Lock,
+    Lock {
+        /// Force lock even if there are local modifications in some encrypted files
+        #[arg(short, long)]
+        force: bool,
+    },
     // Status
     #[command(
         about = "Show encryption status of the repository and encrypted files",
@@ -84,7 +88,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init => cmd_init(),
         Commands::Unlock { key_source } => cmd_unlock(key_source),
-        Commands::Lock => cmd_lock(),
+        Commands::Lock { force } => cmd_lock(force),
         Commands::Status { files } => cmd_status(files),
         Commands::Filter { filter_cmd } => cmd_filter(filter_cmd),
     }
@@ -149,7 +153,6 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     // Find encrypted files and check if any have local modifications
     let encrypted_files = git::find_encrypted_files(&repo_path)?;
     let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
-
     if !dirty_files.is_empty() {
         eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
         for file in &dirty_files {
@@ -194,12 +197,23 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     Ok(())
 }
 
-fn cmd_lock() -> Result<()> {
+fn cmd_lock(force: bool) -> Result<()> {
     let repo_path =
         git::find_repo_root(&std::env::current_dir()?).context("Not in a git repository")?;
 
-    // Find encrypted files before removing filters
+    // Find encrypted files and check if any have local modifications
     let encrypted_files = git::find_encrypted_files(&repo_path)?;
+    if !force {
+        let dirty_files = git::dirty_files(&repo_path, &encrypted_files)?;
+        if !dirty_files.is_empty() {
+            eprintln!("Error: Cannot lock repository while there are local modifications in some encrypted files:");
+            for file in &dirty_files {
+                eprintln!("  {}", file.display());
+            }
+            eprintln!("\nPlease commit or stash your changes before locking, or use --force to force lock.");
+            anyhow::bail!("Repository has dirty encrypted files");
+        }
+    }
 
     // Remove git filter configuration first (so git won't try to decrypt on checkout)
     git::remove_filters(&repo_path).context("Failed to remove git filters")?;
