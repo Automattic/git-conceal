@@ -17,7 +17,6 @@ mod key;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use indoc::indoc;
-use std::io::Read;
 
 #[derive(Parser)]
 #[command(name = "a8c-git-secrets")]
@@ -121,37 +120,14 @@ fn cmd_init() -> Result<()> {
     }
 
     // Generate a new key
-    let key = key::generate_key();
-    let key_b64 = key::key_to_base64(&key);
-    key::store_key(&repo_path, &key).context("Failed to store key file")?;
+    let key = key::Key::generate();
+    key.store(&repo_path).context("Failed to store key file")?;
 
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
 
-    let instructions = format!(
-        indoc! {r#"
-            Repository initialized for a8c-git-secrets
-
-            Your encryption key (save this securely!):
-            {key_b64}
-
-            Once you share this key with users you trust, they can run this to unlock their working copy:
-              echo '{key_b64}' | a8c-git-secrets unlock -
-
-            To start adding files to be encrypted in this repository:
-              - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:
-                ```
-                secrets-file.json  filter={filter} diff={diff}
-                secrets/*  filter={filter} diff={diff}
-                ```
-              - `git add` and `git commit` those files, alongside the `.gitattributes` file.
-                The files having the `filter` attribute set will be encrypted on commit and decrypted on checkout automatically.
-              - Run 'a8c-git-secrets status' to validate the list of files that are encrypted.
-        "#},
-        key_b64 = key_b64,
-        filter = git::FILTER_NAME,
-        diff = git::DIFF_NAME,
-    );
+    let key_b64 = key.to_base64();
+    let instructions = init_instructions(&key_b64);
     println!("{}", instructions);
 
     Ok(())
@@ -173,29 +149,10 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         anyhow::bail!("Repository has dirty encrypted files");
     }
 
-    let key_b64: String = if key_source == "-" {
-        // Read from stdin
-        let mut input = String::new();
-        std::io::stdin()
-            .read_to_string(&mut input)
-            .context("Failed to read key from stdin")?;
-        input
-    } else if let Some(env_var) = key_source.strip_prefix("env:") {
-        // Read from environment variable (format: env:VARNAME)
-        if env_var.is_empty() {
-            anyhow::bail!("Environment variable name cannot be empty after 'env:'");
-        }
-        std::env::var(env_var)
-            .with_context(|| format!("Failed to read key from environment variable {}", env_var))?
-    } else {
-        // Read from file
-        std::fs::read_to_string(&key_source)
-            .with_context(|| format!("Failed to read key from file: {}", key_source))?
-    };
-    let key = key::key_from_base64(key_b64.trim()).context("Failed to decode key")?;
+    let key = key::Key::read_from_source(&key_source)?;
 
     // Store key in key file
-    key::store_key(&repo_path, &key).context("Failed to store key file")?;
+    key.store(&repo_path).context("Failed to store key file")?;
 
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
@@ -230,7 +187,7 @@ fn cmd_lock(force: bool) -> Result<()> {
     git::remove_filters(&repo_path).context("Failed to remove git filters")?;
 
     // Remove the encryption key file
-    key::remove_key(&repo_path).context("Failed to remove key file")?;
+    key::Key::remove(&repo_path).context("Failed to remove key file")?;
 
     // Re-checkout encrypted files to get raw encrypted data from repository
     git::force_recheckout(&repo_path, encrypted_files)
@@ -294,4 +251,39 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
         FilterCommands::Smudge => filter::smudge_filter(&repo_path),
         FilterCommands::Textconv { filename } => filter::diff_textconv(&repo_path, &filename),
     }
+}
+
+/// Format initialization instructions for display to the user
+fn init_instructions(key_b64: &str) -> String {
+    format!(
+        indoc! {r#"
+            Repository initialized for a8c-git-secrets
+
+            Your encryption key (base64, save this securely!):
+            {key_b64}
+
+            Once you share this key with users you trust, they can unlock their working copy using one of these methods:
+              - From environment variable (base64):
+                export GIT_SECRETS_KEY='{key_b64}'
+                a8c-git-secrets unlock env:GIT_SECRETS_KEY
+              - From file (raw binary, 32 bytes):
+                echo '{key_b64}' | base64 -d > /path/to/key.bin
+                a8c-git-secrets unlock /path/to/key.bin
+              - From stdin (raw binary, 32 bytes):
+                echo '{key_b64}' | base64 -d | a8c-git-secrets unlock -
+
+            To start adding files to be encrypted in this repository:
+              - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:
+                ```
+                secrets-file.json  filter={filter} diff={diff}
+                secrets/*  filter={filter} diff={diff}
+                ```
+              - `git add` and `git commit` those files, alongside the `.gitattributes` file.
+                The files having the `filter` attribute set will be encrypted on commit and decrypted on checkout automatically.
+              - Run 'a8c-git-secrets status' to validate the list of files that are encrypted.
+        "#},
+        key_b64 = key_b64,
+        filter = git::FILTER_NAME,
+        diff = git::DIFF_NAME,
+    )
 }

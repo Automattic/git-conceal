@@ -9,7 +9,7 @@ use std::path::Path;
 /// This filter is idempotent: clean(clean(data)) == clean(data)
 /// If the input is already encrypted (has magic header), it passes through unchanged.
 pub fn clean_filter(repo_path: &Path) -> Result<()> {
-    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
+    let key = key::Key::load(repo_path).context("Failed to load encryption key")?;
 
     // Read input from stdin
     let mut input = Vec::new();
@@ -28,7 +28,7 @@ pub fn clean_filter(repo_path: &Path) -> Result<()> {
     }
 
     // Input is plaintext, encrypt it
-    let ciphertext = crypto::encrypt(&key, &input).context("Failed to encrypt data")?;
+    let ciphertext = crypto::encrypt(key.as_bytes(), &input).context("Failed to encrypt data")?;
     io::stdout()
         .write_all(&ciphertext)
         .context("Failed to write ciphertext to stdout")?;
@@ -40,7 +40,7 @@ pub fn clean_filter(repo_path: &Path) -> Result<()> {
 /// This filter is idempotent: smudge(smudge(data)) == smudge(data)
 /// If the input is already plaintext (no magic header), it passes through unchanged.
 pub fn smudge_filter(repo_path: &Path) -> Result<()> {
-    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
+    let key = key::Key::load(repo_path).context("Failed to load encryption key")?;
 
     // Read input from stdin
     let mut input = Vec::new();
@@ -59,7 +59,7 @@ pub fn smudge_filter(repo_path: &Path) -> Result<()> {
     }
 
     // Input is encrypted, decrypt it
-    let plaintext = crypto::decrypt(&key, &input).context("Failed to decrypt data")?;
+    let plaintext = crypto::decrypt(key.as_bytes(), &input).context("Failed to decrypt data")?;
     io::stdout()
         .write_all(&plaintext)
         .context("Failed to write plaintext to stdout")?;
@@ -71,14 +71,14 @@ pub fn smudge_filter(repo_path: &Path) -> Result<()> {
 /// Used by git diff to show decrypted content of encrypted files.
 /// Takes a filename as argument (provided by git when using textconv).
 pub fn diff_textconv(repo_path: &Path, filename: &str) -> Result<()> {
-    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
+    let key = key::Key::load(repo_path).context("Failed to load encryption key")?;
 
     // Read file
     let input = fs::read(filename).with_context(|| format!("Failed to read file: {}", filename))?;
 
     // Decrypt if encrypted, otherwise output as-is
     let plaintext = if crypto::is_encrypted(&input) {
-        crypto::decrypt(&key, &input).context("Failed to decrypt data")?
+        crypto::decrypt(key.as_bytes(), &input).context("Failed to decrypt data")?
     } else {
         input
     };

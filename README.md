@@ -70,15 +70,17 @@ secretdir/** filter=a8c-git-secrets diff=a8c-git-secrets
 When you clone a repository with encrypted files, or if the repository is locked, you need to unlock it:
 
 ```bash
-# Read key from stdin
-echo "YOUR_BASE64_KEY" | a8c-git-secrets unlock -
-
-# Or from an environment variable
+# From environment variable (base64 encoded)
 export GIT_SECRETS_KEY="YOUR_BASE64_KEY"
 a8c-git-secrets unlock env:GIT_SECRETS_KEY
 
-# Or from a file
-a8c-git-secrets unlock /path/to/key.txt
+# From file (raw binary, 32 bytes)
+a8c-git-secrets unlock /path/to/key.bin
+
+# From stdin (raw binary, 32 bytes)
+cat /path/to/key.bin | a8c-git-secrets unlock -
+# Or convert from base64:
+echo "YOUR_BASE64_KEY" | base64 -d | a8c-git-secrets unlock -
 ```
 
 This will:

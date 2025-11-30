@@ -144,7 +144,7 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
 /// Check if repository is unlocked (key file exists)
 pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
     // Try to load the key - if it succeeds, the repository is unlocked
-    match crate::key::load_key(repo_path) {
+    match crate::key::Key::load(repo_path) {
         Ok(_) => Ok(true),   // Key file exists, repository is unlocked
         Err(_) => Ok(false), // Key file doesn't exist or can't be loaded, repository is locked
     }
