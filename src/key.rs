@@ -68,8 +68,6 @@ pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
-
-    // Remove the key (ignore error if it doesn't exist)
     let _ = config.remove(CONFIG_KEY_NAME);
 
     Ok(())

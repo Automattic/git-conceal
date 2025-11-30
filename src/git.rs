@@ -21,49 +21,6 @@ pub fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
     Ok(repo_path)
 }
 
-/// Get the path to the a8c-git-secrets binary
-fn get_binary_path() -> Result<PathBuf> {
-    let binary_name = if cfg!(windows) {
-        "a8c-git-secrets.exe"
-    } else {
-        "a8c-git-secrets"
-    };
-
-    // First, try using the current executable path (most reliable)
-    if let Ok(exe_path) = std::env::current_exe() {
-        // Resolve any symlinks to get the actual path
-        if exe_path.exists() {
-            // Try to canonicalize to get absolute path
-            if let Ok(canonical) = exe_path.canonicalize() {
-                return Ok(canonical);
-            }
-            // If canonicalize fails, use the path as-is if it's absolute
-            if exe_path.is_absolute() {
-                return Ok(exe_path);
-            }
-        }
-    }
-
-    // Fallback: try to find in PATH
-    if let Ok(path) = std::env::var("PATH") {
-        for dir in path.split(if cfg!(windows) { ";" } else { ":" }) {
-            let candidate = Path::new(dir).join(binary_name);
-            if candidate.exists() {
-                // Try to get absolute path
-                if let Ok(absolute) = candidate.canonicalize() {
-                    return Ok(absolute);
-                }
-                if candidate.is_absolute() {
-                    return Ok(candidate);
-                }
-            }
-        }
-    }
-
-    // Last resort: use the binary name (git will look in PATH)
-    Ok(PathBuf::from(binary_name))
-}
-
 /// Configure git filters for encryption/decryption
 pub fn setup_filters(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -117,22 +74,11 @@ pub fn filters_configured(repo_path: &Path) -> Result<bool> {
     }
 }
 
-/// Check if repository is locked (no key in config)
-pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
-    // Try to load the key - if it succeeds, the repository is unlocked
-    match crate::key::load_key_from_config(repo_path) {
-        Ok(_) => Ok(true),   // Key exists, repository is unlocked
-        Err(_) => Ok(false), // Key doesn't exist or can't be loaded, repository is locked
-    }
-}
-
 /// Remove git filters configuration
 pub fn remove_filters(repo_path: &Path) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
-
-    // Remove filter configuration
     let _ = config.remove(&format!("filter.{}.clean", FILTER_NAME));
     let _ = config.remove(&format!("filter.{}.smudge", FILTER_NAME));
     let _ = config.remove(&format!("filter.{}.required", FILTER_NAME));
@@ -141,74 +87,12 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Force re-checkout of files from the repository
-/// Removes files from index and checks them out from HEAD, which will trigger git filters
-///  - To restore the files to their encrypted state after removing filters (during lock)
-///  - Or to have the files decrypted after adding filters and key (during unlock)
-pub fn force_recheckout(repo_path: &Path, files: Vec<PathBuf>) -> Result<()> {
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    println!("Re-checking out {} encrypted file(s)...", files.len());
-
-    // NOTE: `git2`'s `checkout_head` doesn't seem to apply the smudge filter (bug in the implementation?)
-    //       despite all our efforts and use of `disable_filters(false)`.
-    //       This is why this method is implemented with `Command::new("git")` instead of using `git2` API.
-
-    // Step 1: Remove files from the index (equivalent to `git rm --cached <files>`)
-    let mut rm_cmd = Command::new("git");
-    rm_cmd.arg("rm").arg("--cached").current_dir(repo_path);
-    for file_path in &files {
-        rm_cmd.arg(file_path.as_path());
-    }
-    rm_cmd
-        .output()
-        .context("Failed to execute git rm --cached")?;
-
-    // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
-    // This will trigger git filters (smudge filter if filters are configured)
-    let mut checkout_cmd = Command::new("git");
-    checkout_cmd
-        .arg("checkout")
-        .arg("HEAD")
-        .arg("--")
-        .current_dir(repo_path);
-    for file_path in &files {
-        checkout_cmd.arg(file_path.as_path());
-    }
-    let checkout_output = checkout_cmd
-        .output()
-        .context("Failed to execute git checkout command")?;
-    if !checkout_output.status.success() {
-        let stderr = String::from_utf8_lossy(&checkout_output.stderr);
-        anyhow::bail!(
-            "git checkout HEAD -- <files> failed: {}\nstderr: {}",
-            checkout_output.status,
-            stderr
-        );
-    }
-
-    for file_path in &files {
-        println!("  Re-checked out: {}", file_path.display());
-    }
-
-    Ok(())
-}
-
-/// Get relative path from repository root
-/// If the path is already relative or can't be stripped, returns the original path
-fn get_relative_path<'a>(repo_path: &Path, file_path: &'a Path) -> &'a Path {
-    file_path.strip_prefix(repo_path).unwrap_or(file_path)
-}
-
-/// Check if a file has the encryption filter attribute set
-/// Helper function that takes a repository and a relative path
-fn has_encryption_filter(repo: &Repository, rel_path: &Path) -> bool {
-    match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
-        Ok(Some(attr_value)) => attr_value == FILTER_NAME,
-        Ok(None) => false,
-        Err(_) => false, // On error, assume not encrypted
+/// Check if repository is locked (no key in config)
+pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
+    // Try to load the key - if it succeeds, the repository is unlocked
+    match crate::key::load_key_from_config(repo_path) {
+        Ok(_) => Ok(true),   // Key exists, repository is unlocked
+        Err(_) => Ok(false), // Key doesn't exist or can't be loaded, repository is locked
     }
 }
 
@@ -276,4 +160,120 @@ pub fn dirty_files(repo_path: &Path, files: &[PathBuf]) -> Result<Vec<PathBuf>> 
     }
 
     Ok(dirty_files)
+}
+
+/// Force re-checkout of files from the repository
+/// Removes files from index and checks them out from HEAD, which will trigger git filters
+///  - To restore the files to their encrypted state after removing filters (during lock)
+///  - Or to have the files decrypted after adding filters and key (during unlock)
+pub fn force_recheckout(repo_path: &Path, files: Vec<PathBuf>) -> Result<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    println!("Re-checking out {} encrypted file(s)...", files.len());
+
+    // NOTE: `git2`'s `checkout_head` doesn't seem to apply the smudge filter (bug in the implementation?)
+    //       despite all our efforts and use of `disable_filters(false)`.
+    //       This is why this method is implemented with `Command::new("git")` instead of using `git2` API.
+
+    // Step 1: Remove files from the index (equivalent to `git rm --cached <files>`)
+    let mut rm_cmd = Command::new("git");
+    rm_cmd.arg("rm").arg("--cached").current_dir(repo_path);
+    for file_path in &files {
+        rm_cmd.arg(file_path.as_path());
+    }
+    rm_cmd
+        .output()
+        .context("Failed to execute git rm --cached")?;
+
+    // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
+    // This will trigger git filters (smudge filter if filters are configured)
+    let mut checkout_cmd = Command::new("git");
+    checkout_cmd
+        .arg("checkout")
+        .arg("HEAD")
+        .arg("--")
+        .current_dir(repo_path);
+    for file_path in &files {
+        checkout_cmd.arg(file_path.as_path());
+    }
+    let checkout_output = checkout_cmd
+        .output()
+        .context("Failed to execute git checkout command")?;
+    if !checkout_output.status.success() {
+        let stderr = String::from_utf8_lossy(&checkout_output.stderr);
+        anyhow::bail!(
+            "git checkout HEAD -- <files> failed: {}\nstderr: {}",
+            checkout_output.status,
+            stderr
+        );
+    }
+
+    for file_path in &files {
+        println!("  Re-checked out: {}", file_path.display());
+    }
+
+    Ok(())
+}
+
+// === Private Helper functions === //
+
+/// Get the path to the a8c-git-secrets binary
+fn get_binary_path() -> Result<PathBuf> {
+    let binary_name = if cfg!(windows) {
+        "a8c-git-secrets.exe"
+    } else {
+        "a8c-git-secrets"
+    };
+
+    // First, try using the current executable path (most reliable)
+    if let Ok(exe_path) = std::env::current_exe() {
+        // Resolve any symlinks to get the actual path
+        if exe_path.exists() {
+            // Try to canonicalize to get absolute path
+            if let Ok(canonical) = exe_path.canonicalize() {
+                return Ok(canonical);
+            }
+            // If canonicalize fails, use the path as-is if it's absolute
+            if exe_path.is_absolute() {
+                return Ok(exe_path);
+            }
+        }
+    }
+
+    // Fallback: try to find in PATH
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(if cfg!(windows) { ";" } else { ":" }) {
+            let candidate = Path::new(dir).join(binary_name);
+            if candidate.exists() {
+                // Try to get absolute path
+                if let Ok(absolute) = candidate.canonicalize() {
+                    return Ok(absolute);
+                }
+                if candidate.is_absolute() {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+
+    // Last resort: use the binary name (git will look in PATH)
+    Ok(PathBuf::from(binary_name))
+}
+
+/// Get relative path from repository root
+/// If the path is already relative or can't be stripped, returns the original path
+fn get_relative_path<'a>(repo_path: &Path, file_path: &'a Path) -> &'a Path {
+    file_path.strip_prefix(repo_path).unwrap_or(file_path)
+}
+
+/// Check if a file has the encryption filter attribute set
+/// Helper function that takes a repository and a relative path
+fn has_encryption_filter(repo: &Repository, rel_path: &Path) -> bool {
+    match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
+        Ok(Some(attr_value)) => attr_value == FILTER_NAME,
+        Ok(None) => false,
+        Err(_) => false, // On error, assume not encrypted
+    }
 }
