@@ -2,6 +2,7 @@ use aes::Aes256;
 use anyhow::{Context, Result};
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use ctr::Ctr128BE;
+use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -17,29 +18,27 @@ const MAGIC_HEADER: &[u8] = b"\0a8ccrypt";
 const MAGIC_HEADER_SIZE: usize = MAGIC_HEADER.len();
 const VERSION: u8 = 1; // Format version (includes HMAC for key verification)
 const IV_SIZE: usize = 16;
-const KEY_SIZE: usize = 32;
 const HMAC_SIZE: usize = 32; // SHA-256 HMAC output size
 const ENCRYPTED_HEADER_SIZE: usize = MAGIC_HEADER_SIZE + 1 + IV_SIZE; // magic + version + IV
 const MIN_ENCRYPTED_SIZE: usize = ENCRYPTED_HEADER_SIZE + HMAC_SIZE; // minimum size with HMAC
+pub const KEY_SIZE: usize = 32;
 
 type HmacSha256 = Hmac<Sha256>;
 
 /// Generate a random 256-bit key for AES-256-CTR
 pub fn generate_key() -> [u8; KEY_SIZE] {
     let mut key = [0u8; KEY_SIZE];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rngs::OsRng.fill_bytes(&mut key);
     key
 }
 
-/// Derive HMAC key from encryption key
-/// Uses a simple key derivation: HMAC key = SHA-256(encryption_key || "a8c-git-secrets-hmac")
+/// Derive HMAC key from encryption key using HKDF (HMAC-based Key Derivation Function)
+/// This provides proper key separation and follows cryptographic best practices.
 fn derive_hmac_key(encryption_key: &[u8; KEY_SIZE]) -> [u8; KEY_SIZE] {
-    let mut hasher = Sha256::new();
-    hasher.update(encryption_key);
-    hasher.update(b"a8c-git-secrets-hmac");
-    let hash = hasher.finalize();
+    let hkdf = Hkdf::<Sha256>::new(None, encryption_key);
     let mut hmac_key = [0u8; KEY_SIZE];
-    hmac_key.copy_from_slice(&hash);
+    hkdf.expand(b"a8c-git-secrets-hmac", &mut hmac_key)
+        .expect("HKDF expansion failed (output length mismatch)");
     hmac_key
 }
 

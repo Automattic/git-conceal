@@ -4,40 +4,39 @@ use base64::{engine::general_purpose, Engine as _};
 use git2::Repository;
 use std::path::Path;
 
-const KEY_SIZE: usize = 32;
 pub const CONFIG_KEY_NAME: &str = "a8c-git-secrets.key";
 
 /// Generate a new encryption key
-pub fn generate_key() -> [u8; KEY_SIZE] {
+pub fn generate_key() -> [u8; crypto::KEY_SIZE] {
     crypto::generate_key()
 }
 
 /// Export key as base64 string
-pub fn key_to_base64(key: &[u8; KEY_SIZE]) -> String {
+pub fn key_to_base64(key: &[u8; crypto::KEY_SIZE]) -> String {
     general_purpose::STANDARD.encode(key)
 }
 
 /// Import key from base64 string
-pub fn key_from_base64(key_b64: &str) -> Result<[u8; KEY_SIZE]> {
+pub fn key_from_base64(key_b64: &str) -> Result<[u8; crypto::KEY_SIZE]> {
     let key_bytes = general_purpose::STANDARD
         .decode(key_b64)
         .context("Failed to decode base64 key")?;
 
-    if key_bytes.len() != KEY_SIZE {
+    if key_bytes.len() != crypto::KEY_SIZE {
         anyhow::bail!(
             "Invalid key size: expected {} bytes, got {}",
-            KEY_SIZE,
+            crypto::KEY_SIZE,
             key_bytes.len()
         );
     }
 
-    let mut key = [0u8; KEY_SIZE];
+    let mut key = [0u8; crypto::KEY_SIZE];
     key.copy_from_slice(&key_bytes);
     Ok(key)
 }
 
 /// Load the encryption key from git config
-pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; KEY_SIZE]> {
+pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; crypto::KEY_SIZE]> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let config = repo.config().context("Failed to get git config")?;
@@ -50,7 +49,7 @@ pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; KEY_SIZE]> {
 }
 
 /// Store the encryption key in git config
-pub fn store_key_in_config(repo_path: &Path, key: &[u8; KEY_SIZE]) -> Result<()> {
+pub fn store_key_in_config(repo_path: &Path, key: &[u8; crypto::KEY_SIZE]) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
     let mut config = repo.config().context("Failed to get git config")?;
