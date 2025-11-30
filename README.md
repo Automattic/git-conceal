@@ -38,7 +38,7 @@ a8c-git-secrets init
 
 This will:
 - Generate a new 256-bit encryption key
-- Store the key in `.git/config`
+- Store the key in `.git/a8c-git-secrets.key` with secure file permissions (read/write for owner only)
 - Configure git filters for encryption/decryption
 - Display the key (save it securely!)
 
@@ -82,13 +82,13 @@ a8c-git-secrets unlock /path/to/key.txt
 ```
 
 This will:
-- Store the key in `.git/config`
+- Store the key in `.git/a8c-git-secrets.key` with secure file permissions
 - Set up git filters if not already configured
 - Decrypt all encrypted files in the working directory
 
 ### Lock a Repository
 
-To remove the encryption key from the local git config (files will remain encrypted):
+To remove the encryption key file from the repository (files will remain encrypted):
 
 ```bash
 a8c-git-secrets lock
@@ -115,13 +115,24 @@ This shows:
 
 3. **Deterministic Encryption**: The same plaintext always encrypts to the same ciphertext (using a deterministic IV derived from the file content). This allows git to detect when files haven't changed.
 
-4. **Key Storage**: The encryption key is stored in `.git/config` (local to your repository clone). It's never committed to the repository.
+4. **Key Storage**: The encryption key is stored in `.git/a8c-git-secrets.key` (local to your repository clone). The file is created with secure permissions (read/write for owner only on Unix systems). It's never committed to the repository.
 
 ## Security Considerations
 
-- **Key Management**: The encryption key is stored in plaintext in `.git/config`. Protect your `.git` directory appropriately.
+- **Key Management**: The encryption key is stored in plaintext in `.git/a8c-git-secrets.key`. The file is automatically created with secure permissions (mode 0600 on Unix systems - read/write for owner only). On Unix systems, you can verify permissions with:
+  ```bash
+  ls -l .git/a8c-git-secrets.key
+  ```
+  If permissions are incorrect, fix them with:
+  ```bash
+  chmod 600 .git/a8c-git-secrets.key
+  ```
+  Protect your `.git` directory appropriately - it should not be accessible to other users on the system.
+
 - **Key Sharing**: Share keys securely with collaborators (e.g., via encrypted channels, password managers, etc.)
+
 - **File Patterns**: Make sure your `.gitattributes` patterns are correct before adding sensitive files, or they won't be encrypted!
+
 - **Backup Keys**: Always backup your encryption keys. If you lose the key, encrypted files cannot be recovered.
 
 ## Limitations
