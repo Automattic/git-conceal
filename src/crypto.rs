@@ -21,6 +21,8 @@ const IV_SIZE: usize = 16;
 const HMAC_SIZE: usize = 32; // SHA-256 HMAC output size
 const ENCRYPTED_HEADER_SIZE: usize = MAGIC_HEADER_SIZE + 1 + IV_SIZE; // magic + version + IV
 const MIN_ENCRYPTED_SIZE: usize = ENCRYPTED_HEADER_SIZE + HMAC_SIZE; // minimum size with HMAC
+
+/// Size of the encryption key in bytes (256 bits for AES-256)
 pub const KEY_SIZE: usize = 32;
 
 type HmacSha256 = Hmac<Sha256>;

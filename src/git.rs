@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
+/// Name of the git filter used for encryption/decryption
 pub const FILTER_NAME: &str = "a8c-git-secrets";
+
+/// Name of the git diff driver used for showing decrypted content in diffs
 pub const DIFF_NAME: &str = "a8c-git-secrets";
 
 /// Find the git repository root using git2's discover function

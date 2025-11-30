@@ -27,7 +27,7 @@ lint:
 	cargo clippy -- --deny warnings
 
 lint-pedantic:
-	cargo clippy -- --deny warnings --allow clippy::pedantic
+	cargo clippy -- --deny warnings --allow clippy::pedantic --warn missing_docs
 
 lint-fix:
 	cargo clippy --fix -- --deny warnings --allow clippy::pedantic

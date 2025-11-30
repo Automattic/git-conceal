@@ -4,6 +4,7 @@ use base64::{engine::general_purpose, Engine as _};
 use git2::Repository;
 use std::path::Path;
 
+/// Git config key name where the encryption key is stored
 pub const CONFIG_KEY_NAME: &str = "a8c-git-secrets.key";
 
 /// Generate a new encryption key
