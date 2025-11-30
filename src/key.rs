@@ -2,10 +2,11 @@ use crate::crypto;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use git2::Repository;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-/// Git config key name where the encryption key is stored
-pub const CONFIG_KEY_NAME: &str = "a8c-git-secrets.key";
+/// Filename for the encryption key file stored in .git directory
+const KEY_FILE_NAME: &str = "a8c-git-secrets.key";
 
 /// Generate a new encryption key
 pub fn generate_key() -> [u8; crypto::KEY_SIZE] {
@@ -36,47 +37,85 @@ pub fn key_from_base64(key_b64: &str) -> Result<[u8; crypto::KEY_SIZE]> {
     Ok(key)
 }
 
-/// Load the encryption key from git config
-pub fn load_key_from_config(repo_path: &Path) -> Result<[u8; crypto::KEY_SIZE]> {
+/// Get the path to the key file in the .git directory
+fn get_key_file_path(repo_path: &Path) -> Result<PathBuf> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-
-    let config = repo.config().context("Failed to get git config")?;
-
-    let key_b64 = config
-        .get_string(CONFIG_KEY_NAME)
-        .context("Encryption key not found in git config. Run 'a8c-git-secrets unlock' first.")?;
-
-    key_from_base64(&key_b64).context("Failed to decode base64 key from git config")
+    let git_dir = repo.path();
+    Ok(git_dir.join(KEY_FILE_NAME))
 }
 
-/// Store the encryption key in git config
-pub fn store_key_in_config(repo_path: &Path, key: &[u8; crypto::KEY_SIZE]) -> Result<()> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+/// Load the encryption key from the key file in .git directory
+pub fn load_key(repo_path: &Path) -> Result<[u8; crypto::KEY_SIZE]> {
+    let key_file = get_key_file_path(repo_path)?;
 
-    let mut config = repo.config().context("Failed to get git config")?;
+    let key_bytes = fs::read(&key_file).with_context(|| {
+        format!(
+            "Encryption key not found at {}. Run 'a8c-git-secrets unlock' first.",
+            key_file.display()
+        )
+    })?;
 
-    let key_b64 = key_to_base64(key);
-    config
-        .set_str(CONFIG_KEY_NAME, &key_b64)
-        .context("Failed to store key in git config")?;
+    if key_bytes.len() != crypto::KEY_SIZE {
+        anyhow::bail!(
+            "Invalid key file size: expected {} bytes, got {}",
+            crypto::KEY_SIZE,
+            key_bytes.len()
+        );
+    }
+
+    let mut key = [0u8; crypto::KEY_SIZE];
+    key.copy_from_slice(&key_bytes);
+    Ok(key)
+}
+
+/// Store the encryption key in a file in the .git directory with secure permissions
+pub fn store_key(repo_path: &Path, key: &[u8; crypto::KEY_SIZE]) -> Result<()> {
+    let key_file = get_key_file_path(repo_path)?;
+
+    // Write the key as raw bytes to the file
+    fs::write(&key_file, key)
+        .with_context(|| format!("Failed to write key file: {}", key_file.display()))?;
+
+    // Set secure file permissions (read/write for owner only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&key_file)
+            .with_context(|| {
+                format!(
+                    "Failed to get metadata for key file: {}",
+                    key_file.display()
+                )
+            })?
+            .permissions();
+        perms.set_mode(0o600); // rw------- (owner read/write only)
+        fs::set_permissions(&key_file, perms).with_context(|| {
+            format!(
+                "Failed to set permissions on key file: {}",
+                key_file.display()
+            )
+        })?;
+    }
+
+    #[cfg(windows)]
+    {
+        // On Windows, file permissions work differently through ACLs
+        // The file will have default permissions which are typically secure
+        // in a .git directory that's already protected
+        // Note: More sophisticated Windows ACL manipulation would require winapi crate
+    }
 
     Ok(())
 }
 
-/// Remove the encryption key from git config
-pub fn remove_key_from_config(repo_path: &Path) -> Result<()> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+/// Remove the encryption key file from the .git directory
+pub fn remove_key(repo_path: &Path) -> Result<()> {
+    let key_file = get_key_file_path(repo_path)?;
 
-    let mut config = repo.config().context("Failed to get git config")?;
-
-    // Remove the key, but NotFound is acceptable (key might not exist)
-    if let Err(e) = config.remove(CONFIG_KEY_NAME) {
-        if e.code() != git2::ErrorCode::NotFound {
-            return Err(anyhow::anyhow!(
-                "Failed to remove encryption key from git config: {}",
-                e
-            ));
-        }
+    // Remove the key file, but it's okay if it doesn't exist
+    if key_file.exists() {
+        fs::remove_file(&key_file)
+            .with_context(|| format!("Failed to remove key file: {}", key_file.display()))?;
     }
 
     Ok(())

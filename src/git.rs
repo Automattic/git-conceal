@@ -132,18 +132,21 @@ pub fn remove_filters(repo_path: &Path) -> Result<()> {
     }
 
     if !errors.is_empty() {
-        anyhow::bail!("Failed to remove some filter configurations:\n{}", errors.join("\n"));
+        anyhow::bail!(
+            "Failed to remove some filter configurations:\n{}",
+            errors.join("\n")
+        );
     }
 
     Ok(())
 }
 
-/// Check if repository is locked (no key in config)
+/// Check if repository is unlocked (key file exists)
 pub fn is_unlocked(repo_path: &Path) -> Result<bool> {
     // Try to load the key - if it succeeds, the repository is unlocked
-    match crate::key::load_key_from_config(repo_path) {
-        Ok(_) => Ok(true),   // Key exists, repository is unlocked
-        Err(_) => Ok(false), // Key doesn't exist or can't be loaded, repository is locked
+    match crate::key::load_key(repo_path) {
+        Ok(_) => Ok(true),   // Key file exists, repository is unlocked
+        Err(_) => Ok(false), // Key file doesn't exist or can't be loaded, repository is locked
     }
 }
 

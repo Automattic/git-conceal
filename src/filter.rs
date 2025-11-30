@@ -9,7 +9,7 @@ use std::path::Path;
 /// This filter is idempotent: clean(clean(data)) == clean(data)
 /// If the input is already encrypted (has magic header), it passes through unchanged.
 pub fn clean_filter(repo_path: &Path) -> Result<()> {
-    let key = key::load_key_from_config(repo_path).context("Failed to load encryption key")?;
+    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
 
     // Read input from stdin
     let mut input = Vec::new();
@@ -40,7 +40,7 @@ pub fn clean_filter(repo_path: &Path) -> Result<()> {
 /// This filter is idempotent: smudge(smudge(data)) == smudge(data)
 /// If the input is already plaintext (no magic header), it passes through unchanged.
 pub fn smudge_filter(repo_path: &Path) -> Result<()> {
-    let key = key::load_key_from_config(repo_path).context("Failed to load encryption key")?;
+    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
 
     // Read input from stdin
     let mut input = Vec::new();
@@ -71,7 +71,7 @@ pub fn smudge_filter(repo_path: &Path) -> Result<()> {
 /// Used by git diff to show decrypted content of encrypted files.
 /// Takes a filename as argument (provided by git when using textconv).
 pub fn diff_textconv(repo_path: &Path, filename: &str) -> Result<()> {
-    let key = key::load_key_from_config(repo_path).context("Failed to load encryption key")?;
+    let key = key::load_key(repo_path).context("Failed to load encryption key")?;
 
     // Read file
     let input = fs::read(filename).with_context(|| format!("Failed to read file: {}", filename))?;

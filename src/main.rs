@@ -42,7 +42,7 @@ enum Commands {
     #[command(
         about = "Unlock an encrypted repository and decrypt existing files",
         long_about = "Use this command to unlock a repository that already contains encrypted files. \n\
-                      It sets up git filters, saves the key you provide in the git config, \
+                      It sets up git filters, saves the key you provide in a key file, \
                       and decrypts any encrypted files in the working directory."
     )]
     Unlock {
@@ -52,7 +52,7 @@ enum Commands {
     // Lock
     #[command(
         about = "Lock a decrypted repository and restore files to their encrypted state",
-        long_about = "Use this command to remove the encryption key and git filters from the local git config \
+        long_about = "Use this command to remove the encryption key file and git filters from the local repository \
                       of an unlocked repository, and to restore files to their encrypted state."
     )]
     Lock {
@@ -117,13 +117,13 @@ fn cmd_init() -> Result<()> {
         return Ok(());
     }
     if git::is_unlocked(&repo_path)? {
-        anyhow::bail!("Repository is already configured and unlocked (key in git config)");
+        anyhow::bail!("Repository is already configured and unlocked (key file exists)");
     }
 
     // Generate a new key
     let key = key::generate_key();
     let key_b64 = key::key_to_base64(&key);
-    key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;
+    key::store_key(&repo_path, &key).context("Failed to store key file")?;
 
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
@@ -194,8 +194,8 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     };
     let key = key::key_from_base64(key_b64.trim()).context("Failed to decode key")?;
 
-    // Store key in git config
-    key::store_key_in_config(&repo_path, &key).context("Failed to store key in git config")?;
+    // Store key in key file
+    key::store_key(&repo_path, &key).context("Failed to store key file")?;
 
     // Set up git filters
     git::setup_filters(&repo_path).context("Failed to set up git filters")?;
@@ -229,8 +229,8 @@ fn cmd_lock(force: bool) -> Result<()> {
     // Remove git filter configuration first (so git won't try to decrypt on checkout)
     git::remove_filters(&repo_path).context("Failed to remove git filters")?;
 
-    // Remove the encryption key
-    key::remove_key_from_config(&repo_path).context("Failed to remove key from git config")?;
+    // Remove the encryption key file
+    key::remove_key(&repo_path).context("Failed to remove key file")?;
 
     // Re-checkout encrypted files to get raw encrypted data from repository
     git::force_recheckout(&repo_path, encrypted_files)
