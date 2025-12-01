@@ -5,6 +5,7 @@ set -euo pipefail
 [ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
 
 echo "~~~ Linting..."
+rustup component add clippy
 cargo clippy -- --deny warnings --allow clippy::pedantic --warn missing_docs
 
 echo "~~~ Checking Release..."
