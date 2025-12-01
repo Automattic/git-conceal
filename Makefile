@@ -9,8 +9,14 @@ help:
 	@echo "  lint          - Run clippy linter"
 	@echo "  fmt-lint      - Format and lint the code"
 
+check-debug:
+	cargo check
+
 build-debug:
 	cargo build
+
+check-release:
+	cargo check --release
 
 build-release:
 	cargo build --release
@@ -20,8 +26,6 @@ test:
 
 fmt:
 	cargo fmt
-
-fmt-lint: fmt lint
 
 lint:
 	cargo clippy -- --deny warnings

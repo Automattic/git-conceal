@@ -2,16 +2,14 @@
 
 set -euo pipefail
 
-echo "~~~ Building..."
+echo "~~~ Building Release..."
 [ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
-cargo build --release
+make build-release
 
-echo "~~~ Testing..."
-cargo test
 
 echo "~~~ Uploading artifact..."
 platform_triple=$(rustc -vV | grep "^host" | awk '{print $2}')
-version=$(git rev-parse --short HEAD)
+version="${BUILDKITE_TAG:-${BUILDKITE_COMMIT:0:7}}"
 extension="${1:-}"
 dest_filename="git-conceal-${platform_triple}-${version}${extension}"
 cp "target/release/git-conceal" "$dest_filename"

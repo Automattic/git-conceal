@@ -5,53 +5,63 @@ env:
   IMAGE_ID: "xcode-26.0"
 
 steps:
+  - group: "🕵️ Lint and Test"
+    steps:
+      - label: "🕵️ Test macOS"
+        key: check-macos
+        agents:
+          queue: mac
+        command: |
+          .buildkite/lint_and_test.sh
+
+      - label: "🕵️ Test Linux"
+        key: check-linux
+        agents:
+          queue: default
+        command: |
+          .buildkite/lint_and_test.sh
+
+      - label: "🕵️ Test Windows"
+        key: check-windows
+        agents:
+          queue: windows
+        command: |
+          bash .buildkite/lint_and_test.sh
+
   - group: "Build"
+    if: build.branch == 'trunk' || build.tag != null
     steps:
       - label: "Build macOS"
         key: build-macos
+        depends_on: check-macos
         agents:
           queue: mac
         command: |
           echo "~~~ Installing Rust via Homebrew..."
           brew install rust
-
           .buildkite/build_and_upload_artifact.sh
 
       - label: "Build Linux"
         key: build-linux
+        depends_on: check-linux
         agents:
           queue: default
         command: |
           echo "~~~ Installing Rust via rustup..."
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
           .buildkite/build_and_upload_artifact.sh
 
       - label: "Build Windows"
         key: build-windows
+        depends_on: check-windows
         agents:
           queue: windows
         command: |
           bash .buildkite/build_and_upload_artifact.sh .exe
-  - group: "Test"
-    steps:
-      - label: "Test macOS"
-        depends_on: build-macos
-        agents:
-          queue: mac
-        command: |
-          .buildkite/test_decrypt.sh aarch64-apple-darwin
 
-      - label: "Test Linux"
-        depends_on: build-linux
-        agents:
-          queue: default
-        command: |
-          .buildkite/test_decrypt.sh x86_64-unknown-linux-gnu
-
-      - label: "Test windows"
-        depends_on: build-windows
-        agents:
-          queue: windows
-        command: |
-          bash .buildkite/test_decrypt.sh x86_64-pc-windows-gnu
+  - label: "Create GitHub Release"
+    if: build.tag != null
+    depends_on: [build-macos, build-linux, build-windows]
+    agents:
+      queue: default
+    command: .buildkite/create_github_release.sh

@@ -25,7 +25,7 @@ You can learn more about technical details of how git filter works in [this arti
 ### Build from Source
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Automattic/git-conceal
 cd git-conceal
 cargo build --release
 ```
@@ -34,7 +34,7 @@ The binary will be at `target/release/git-conceal` (or `target/release/git-conce
 
 ### Download from GitHub Release
 
-Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from the latest GitHub release.
+Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest).
 Then rename it `git-conceal` and save it ideally in a directory in your `$PATH` (e.g. `/usr/local/bin`). That's it!
 
 ## Usage
