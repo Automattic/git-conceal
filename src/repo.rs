@@ -281,35 +281,44 @@ impl Repo {
         Ok(filtered_files)
     }
 
-    /// Check if any of the given files have local modifications (are "dirty")
-    pub fn dirty_files(&self, files: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    /// Get all filtered files that have local modifications (are "dirty")
+    pub fn dirty_filtered_files(&self) -> Result<Vec<PathBuf>> {
         let repo = self.open()?;
 
-        let mut dirty_files = Vec::new();
+        let mut status_opts = git2::StatusOptions::new();
+        status_opts
+            .include_untracked(false)
+            .include_ignored(false)
+            .include_unmodified(false)
+            .renames_head_to_index(true)
+            .renames_index_to_workdir(true);
 
-        // Check status of each file
-        for file_path in files {
-            // Get file status
-            let status = repo
-                .status_file(file_path.as_path())
-                .with_context(|| format!("Failed to get status for {}", file_path.display()))?;
+        let statuses = repo
+            .statuses(Some(&mut status_opts))
+            .context("Failed to get git status")?;
 
-            // Check if file has any modifications (workdir or index)
-            if status.intersects(
-                git2::Status::WT_MODIFIED
-                    | git2::Status::WT_DELETED
-                    | git2::Status::WT_TYPECHANGE
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_TYPECHANGE
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_NEW,
-            ) {
-                dirty_files.push(file_path.clone());
+        let mut dirty_filtered = Vec::new();
+        let status_flags = git2::Status::WT_MODIFIED
+            | git2::Status::WT_DELETED
+            | git2::Status::WT_TYPECHANGE
+            | git2::Status::INDEX_MODIFIED
+            | git2::Status::INDEX_DELETED
+            | git2::Status::INDEX_TYPECHANGE
+            | git2::Status::INDEX_RENAMED
+            | git2::Status::INDEX_NEW;
+
+        for entry in statuses.iter() {
+            if entry.status().intersects(status_flags) {
+                if let Some(path) = entry.path() {
+                    let file_path = PathBuf::from(path);
+                    if self.is_filtered_file(&file_path)? {
+                        dirty_filtered.push(file_path);
+                    }
+                }
             }
         }
 
-        Ok(dirty_files)
+        Ok(dirty_filtered)
     }
 
     /// Force re-checkout of files from the repository
@@ -478,7 +487,6 @@ fn get_binary_path() -> Result<PathBuf> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
     use std::process::Command;
     use tempfile::TempDir;
 
@@ -632,34 +640,6 @@ mod tests {
     }
 
     #[test]
-    fn test_find_filtered_files_empty() {
-        let (_temp_dir, repo) = setup_test_repo().unwrap();
-
-        // No files with encryption filter, so should be empty
-        let filtered_files = repo.find_filtered_files().unwrap();
-        assert!(filtered_files.is_empty());
-    }
-
-    #[test]
-    fn test_find_filtered_files_with_gitattributes() {
-        let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let repo_path = repo.workdir();
-
-        // Create a .gitattributes file with encryption filter
-        let gitattributes_content =
-            format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
-        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
-
-        // Create the file
-        fs::write(repo_path.join("secret.txt"), "secret content").unwrap();
-
-        // Find filtered files
-        let filtered_files = repo.find_filtered_files().unwrap();
-        assert_eq!(filtered_files.len(), 1);
-        assert!(filtered_files[0].ends_with("secret.txt"));
-    }
-
-    #[test]
     fn test_is_filtered_file() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
@@ -680,6 +660,15 @@ mod tests {
         assert!(!repo
             .is_filtered_file(&repo_path.join("public.txt"))
             .unwrap());
+    }
+
+    #[test]
+    fn test_find_filtered_files_empty() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        // No files with encryption filter, so should be empty
+        let filtered_files = repo.find_filtered_files().unwrap();
+        assert!(filtered_files.is_empty());
     }
 
     #[test]
@@ -705,69 +694,122 @@ mod tests {
         // Find filtered files
         let filtered_files = repo.find_filtered_files().unwrap();
         assert_eq!(filtered_files.len(), 3);
+        assert!(filtered_files.contains(&repo_path.join("secret1.txt")));
+        assert!(filtered_files.contains(&repo_path.join("secret2.txt")));
+        assert!(filtered_files.contains(&repo_path.join("my.key")));
     }
 
     #[test]
-    fn test_dirty_files_empty() {
-        let (_temp_dir, repo) = setup_test_repo().unwrap();
-
-        let files = vec![];
-        let dirty = repo.dirty_files(&files).unwrap();
-        assert!(dirty.is_empty());
-    }
-
-    #[test]
-    fn test_dirty_files_clean() {
+    fn test_dirty_filtered_files_none_dirty() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
-        // Create and commit a file
-        let file_path = repo_path.join("test.txt");
-        fs::write(&file_path, "content").unwrap();
+        // Setup filters
+        repo.setup_filters().unwrap();
+
+        // Create .gitattributes with encryption filter
+        let gitattributes_content =
+            format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create and commit a filtered file
+        fs::write(repo_path.join("secret.txt"), "secret content").unwrap();
         Command::new("git")
-            .args(["add", "test.txt"])
+            .args(["add", ".gitattributes", "secret.txt"])
             .current_dir(repo_path)
             .output()
             .unwrap();
         Command::new("git")
-            .args(["commit", "-m", "Add test.txt"])
+            .args(["commit", "-m", "Add secret file"])
             .current_dir(repo_path)
             .output()
             .unwrap();
 
-        // File should not be dirty
-        let files = vec![PathBuf::from("test.txt")];
-        let dirty = repo.dirty_files(&files).unwrap();
-        assert!(dirty.is_empty());
+        // No files should be dirty
+        let dirty_filtered = repo.dirty_filtered_files().unwrap();
+        assert!(dirty_filtered.is_empty());
     }
 
     #[test]
-    fn test_dirty_files_modified() {
+    fn test_dirty_filtered_files_dirty_but_not_filtered() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
-        // Create and commit a file
-        let file_path = repo_path.join("test.txt");
-        fs::write(&file_path, "content").unwrap();
+        // Setup filters
+        repo.setup_filters().unwrap();
+
+        // Create .gitattributes with encryption filter for secret.txt only
+        let gitattributes_content =
+            format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create and commit both a filtered and non-filtered file
+        fs::write(repo_path.join("secret.txt"), "secret content").unwrap();
+        fs::write(repo_path.join("public.txt"), "public content").unwrap();
         Command::new("git")
-            .args(["add", "test.txt"])
+            .args(["add", ".gitattributes", "secret.txt", "public.txt"])
             .current_dir(repo_path)
             .output()
             .unwrap();
         Command::new("git")
-            .args(["commit", "-m", "Add test.txt"])
+            .args(["commit", "-m", "Add files"])
             .current_dir(repo_path)
             .output()
             .unwrap();
 
-        // Modify the file
-        fs::write(&file_path, "modified content").unwrap();
+        // Modify only the non-filtered file
+        fs::write(repo_path.join("public.txt"), "modified public content").unwrap();
 
-        // File should be dirty
-        let files = vec![PathBuf::from("test.txt")];
-        let dirty = repo.dirty_files(&files).unwrap();
-        assert_eq!(dirty.len(), 1);
-        assert!(dirty[0].ends_with("test.txt"));
+        // No filtered files should be dirty (only public.txt is dirty, but it's not filtered)
+        let dirty_filtered = repo.dirty_filtered_files().unwrap();
+        assert!(dirty_filtered.is_empty());
+    }
+
+    #[test]
+    fn test_dirty_filtered_files_some_dirty_and_filtered() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Setup filters
+        repo.setup_filters().unwrap();
+
+        // Create .gitattributes with encryption filter for secret files
+        let gitattributes_content = format!(
+            "secret1.txt filter={} diff={}\n\
+             secret2.txt filter={} diff={}\n",
+            FILTER_NAME, DIFF_NAME, FILTER_NAME, DIFF_NAME
+        );
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create and commit filtered files and a non-filtered file
+        fs::write(repo_path.join("secret1.txt"), "secret1 content").unwrap();
+        fs::write(repo_path.join("secret2.txt"), "secret2 content").unwrap();
+        fs::write(repo_path.join("public.txt"), "public content").unwrap();
+        Command::new("git")
+            .args([
+                "add",
+                ".gitattributes",
+                "secret1.txt",
+                "secret2.txt",
+                "public.txt",
+            ])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Add files"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Modify one filtered file and the non-filtered file
+        fs::write(repo_path.join("secret1.txt"), "modified secret1 content").unwrap();
+        fs::write(repo_path.join("public.txt"), "modified public content").unwrap();
+
+        // Only the filtered file that was modified should be in the result
+        let dirty_filtered = repo.dirty_filtered_files().unwrap();
+        assert_eq!(dirty_filtered.len(), 1);
+        assert!(dirty_filtered[0].ends_with("secret1.txt"));
     }
 
     #[test]

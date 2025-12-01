@@ -170,12 +170,11 @@ fn cmd_init() -> Result<()> {
 fn cmd_unlock(key_source: String) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
-    // Find filtered files and check if any have local modifications
-    let filtered_files = repo.find_filtered_files()?;
-    let dirty_files = repo.dirty_files(&filtered_files)?;
-    if !dirty_files.is_empty() {
+    // Check if any filtered files have local modifications
+    let dirty_filtered = repo.dirty_filtered_files()?;
+    if !dirty_filtered.is_empty() {
         eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
-        for file in &dirty_files {
+        for file in &dirty_filtered {
             eprintln!("  {}", file.display());
         }
         eprintln!("\nPlease commit, stash or undo your changes before unlocking.");
@@ -192,6 +191,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         .context("Failed to set up git filters")?;
 
     // Force re-checkout of filtered files to trigger smudge filter (decrypt them)
+    let filtered_files = repo.find_filtered_files()?;
     repo.force_recheckout(filtered_files)
         .context("Failed to re-checkout encrypted files")?;
 
@@ -202,13 +202,12 @@ fn cmd_unlock(key_source: String) -> Result<()> {
 fn cmd_lock(force: bool) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
-    // Find filtered files and check if any have local modifications
-    let filtered_files = repo.find_filtered_files()?;
+    // Check if any filtered files have local modifications
     if !force {
-        let dirty_files = repo.dirty_files(&filtered_files)?;
-        if !dirty_files.is_empty() {
+        let dirty_filtered = repo.dirty_filtered_files()?;
+        if !dirty_filtered.is_empty() {
             eprintln!("Error: Cannot lock repository while there are local modifications in some encrypted files:");
-            for file in &dirty_files {
+            for file in &dirty_filtered {
                 eprintln!("  {}", file.display());
             }
             eprintln!("\nPlease commit, stash or undo your changes before locking, or use --force to force lock.");
@@ -224,6 +223,7 @@ fn cmd_lock(force: bool) -> Result<()> {
     repo.remove_key().context("Failed to remove key file")?;
 
     // Re-checkout filtered files to get raw encrypted data from repository
+    let filtered_files = repo.find_filtered_files()?;
     repo.force_recheckout(filtered_files)
         .context("Failed to re-checkout encrypted files")?;
 
@@ -236,27 +236,27 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
 
     if files.is_empty() {
         // Show repository status
-        let is_unlocked = repo.is_unlocked()?;
-        let filters_configured = repo.filters_configured()?;
-        let filtered_files = repo.find_filtered_files()?;
-
         println!("Repository: {}", repo.workdir().display());
+        let is_unlocked = repo.is_unlocked()?;
         println!(
             "Status: {}",
             if is_unlocked { "unlocked" } else { "locked" }
         );
+
+        let filters_configured = repo.filters_configured()?;
         println!(
             "Filters configured: {}",
             if filters_configured { "yes" } else { "no" }
         );
 
-        if !filtered_files.is_empty() {
-            println!("\nFiles configured for encryption by git filter:");
+        println!("\nFiles configured for encryption by git filter:");
+        let filtered_files = repo.find_filtered_files()?;
+        if filtered_files.is_empty() {
+            println!("\n -- No encrypted files found in working directory");
+        } else {
             for file in &filtered_files {
                 println!("  🔒 {}", file.display());
             }
-        } else {
-            println!("\nNo encrypted files found in working directory");
         }
     } else {
         // Check status for specific files
