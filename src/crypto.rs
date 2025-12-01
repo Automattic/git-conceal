@@ -23,8 +23,6 @@ const HMAC_SIZE: usize = 32; // SHA-256 HMAC output size
 const ENCRYPTED_HEADER_SIZE: usize = MAGIC_HEADER_SIZE + 1 + IV_SIZE; // magic + version + IV
 const MIN_ENCRYPTED_SIZE: usize = ENCRYPTED_HEADER_SIZE + HMAC_SIZE; // minimum size with HMAC
 
-type HmacSha256 = Hmac<Sha256>;
-
 /// Generate random key bytes of the specified size
 pub fn generate_key_bytes(size: usize) -> Vec<u8> {
     let mut bytes = vec![0u8; size];
@@ -32,16 +30,6 @@ pub fn generate_key_bytes(size: usize) -> Vec<u8> {
         .try_fill_bytes(&mut bytes)
         .expect("Failed to generate random key bytes from OS RNG");
     bytes
-}
-
-/// Derive HMAC key from encryption key using HKDF (HMAC-based Key Derivation Function)
-/// This provides proper key separation and follows cryptographic best practices.
-fn derive_hmac_key(encryption_key: &key::Key) -> [u8; key::Key::KEY_SIZE] {
-    let hkdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
-    let mut hmac_key = [0u8; key::Key::KEY_SIZE];
-    hkdf.expand(b"a8c-git-secrets-hmac", &mut hmac_key)
-        .expect("HKDF expansion failed (output length mismatch)");
-    hmac_key
 }
 
 /// Check if data appears to be encrypted (has the magic header)
@@ -88,7 +76,7 @@ pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     // Compute HMAC (authenticates the entire ciphertext including header)
     let hmac_key = derive_hmac_key(key);
     let mut mac =
-        HmacSha256::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
+        Hmac::<Sha256>::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     mac.update(&result); // HMAC covers: magic + version + IV + encrypted data
     let hmac_tag = mac.finalize().into_bytes();
     result.extend_from_slice(&hmac_tag);
@@ -131,7 +119,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     // Verify HMAC before attempting decryption
     let hmac_key = derive_hmac_key(key);
     let mut mac =
-        HmacSha256::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
+        Hmac::<Sha256>::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     // HMAC covers: magic + version + IV + encrypted data (everything except the HMAC itself)
     mac.update(&ciphertext[..ciphertext.len() - HMAC_SIZE]);
     mac.verify_slice(expected_hmac).map_err(|_| {
@@ -149,6 +137,20 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
 
     Ok(buffer)
 }
+
+// === Private Helper functions === //
+
+/// Derive HMAC key from encryption key using a KDF (Key Derivation Function)
+/// This provides proper key separation and follows cryptographic best practices.
+fn derive_hmac_key(encryption_key: &key::Key) -> [u8; key::Key::KEY_SIZE] {
+    let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
+    let mut hmac_key = [0u8; key::Key::KEY_SIZE];
+    kdf.expand(b"a8c-git-secrets-hmac", &mut hmac_key)
+        .expect("HKDF expansion failed (output length mismatch)");
+    hmac_key
+}
+
+// === Tests === //
 
 #[cfg(test)]
 mod tests {

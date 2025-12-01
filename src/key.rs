@@ -21,7 +21,7 @@ impl Key {
     /// Create a new Key from raw bytes
     ///
     /// This is primarily used internally when constructing keys from various sources.
-    pub(crate) fn from_bytes(bytes: [u8; Self::KEY_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; Self::KEY_SIZE]) -> Self {
         Self { bytes }
     }
 
@@ -102,6 +102,8 @@ impl Deref for Key {
     }
 }
 
+// === Private Helper functions === //
+
 /// Convert a byte vector to a key array, validating the length
 fn bytes_to_key(key_bytes: Vec<u8>) -> Result<Key> {
     if key_bytes.len() != Key::KEY_SIZE {
@@ -116,6 +118,8 @@ fn bytes_to_key(key_bytes: Vec<u8>) -> Result<Key> {
     bytes.copy_from_slice(&key_bytes);
     Ok(Key::from_bytes(bytes))
 }
+
+// === Tests === //
 
 #[cfg(test)]
 mod tests {

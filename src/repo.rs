@@ -400,7 +400,8 @@ impl Repo {
 
 // === Private Helper functions === //
 
-/// Get the path to the a8c-git-secrets binary
+/// Get the path to the a8c-git-secrets binary.
+/// Needed internally to configure the git filters.
 fn get_binary_path() -> Result<PathBuf> {
     // First, try using the current executable path (most reliable)
     if let Ok(exe_path) = std::env::current_exe() {
@@ -434,6 +435,8 @@ fn get_binary_path() -> Result<PathBuf> {
 
     Ok(PathBuf::from(binary_name))
 }
+
+// === Tests === //
 
 #[cfg(test)]
 mod tests {
