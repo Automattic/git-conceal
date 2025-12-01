@@ -374,6 +374,42 @@ impl Repo {
         Ok(())
     }
 
+    /// Re-normalize files in the git index
+    ///
+    /// Runs `git add --renormalize` on the specified files, which will re-apply
+    /// git filters (clean filter) to re-encrypt files with the current key.
+    /// This is useful after rotating the encryption key to re-encrypt all
+    /// filtered files with the new key.
+    ///
+    /// # Errors
+    /// Returns an error if the git command fails or if any of the files cannot be processed.
+    pub fn renormalize_files(&self, files: &[PathBuf]) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        let mut add_cmd = Command::new("git");
+        add_cmd
+            .arg("add")
+            .arg("--renormalize")
+            .current_dir(&self.workdir);
+        for file_path in files {
+            add_cmd.arg(file_path.as_path());
+        }
+        let add_output = add_cmd
+            .output()
+            .context("Failed to execute git add --renormalize")?;
+        if !add_output.status.success() {
+            anyhow::bail!(
+                "git add --renormalize failed: {}\nstderr: {}",
+                add_output.status,
+                String::from_utf8_lossy(&add_output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
     /// Get the path to the key file in the .git directory
     fn key_file_path(&self) -> Result<PathBuf> {
         let repo = self.open()?;

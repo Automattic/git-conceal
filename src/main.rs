@@ -17,6 +17,7 @@ mod repo;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use indoc::indoc;
+use std::io::Write;
 
 #[derive(Parser)]
 #[command(name = "a8c-git-secrets")]
@@ -70,11 +71,43 @@ enum Commands {
         #[arg(value_name = "FILE")]
         files: Vec<String>,
     },
+    /// Key management commands
+    #[command(about = "Manage encryption key")]
+    Key {
+        #[command(subcommand)]
+        key_cmd: KeyCommands,
+    },
     /// Git filter commands (internal use)
     #[command(hide = true)]
     Filter {
         #[command(subcommand)]
         filter_cmd: FilterCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum KeyCommands {
+    /// Show the current encryption key
+    #[command(
+        about = "Show the current encryption key",
+        long_about = "Print the current encryption key, so you can share it with trusted coworkers."
+    )]
+    Show {
+        /// Print the key as raw bytes instead of base64
+        #[arg(short, long)]
+        raw: bool,
+    },
+    /// Rotate the encryption key
+    #[command(
+        about = "Rotate the encryption key",
+        long_about = "Generate a new encryption key to replace the existing one. \
+                      The repository must be unlocked. After the key rotation, \
+                      all secret files will be re-encrypted with the new key and staged for commit."
+    )]
+    Rotate {
+        /// Skip confirmation prompt
+        #[arg(short = 'y', long)]
+        skip_confirmation: bool,
     },
 }
 
@@ -100,6 +133,7 @@ fn main() -> Result<()> {
         Commands::Unlock { key_source } => cmd_unlock(key_source),
         Commands::Lock { force } => cmd_lock(force),
         Commands::Status { files } => cmd_status(files),
+        Commands::Key { key_cmd } => cmd_key(key_cmd),
         Commands::Filter { filter_cmd } => cmd_filter(filter_cmd),
     }
 }
@@ -241,6 +275,66 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
     Ok(())
 }
 
+fn cmd_key(key_cmd: KeyCommands) -> Result<()> {
+    match key_cmd {
+        KeyCommands::Show { raw } => cmd_key_show(raw),
+        KeyCommands::Rotate { skip_confirmation } => cmd_key_rotate(skip_confirmation),
+    }
+}
+
+fn cmd_key_show(raw: bool) -> Result<()> {
+    let repo = repo::Repo::discover()?;
+    if !repo.is_unlocked()? {
+        anyhow::bail!(
+            "Repository is locked (no key file found). Run 'a8c-git-secrets unlock' first."
+        );
+    }
+
+    let key = repo.load_key().context("Failed to load encryption key")?;
+    if raw {
+        std::io::stdout()
+            .write_all(key.as_bytes())
+            .context("Failed to write key to stdout")?;
+    } else {
+        println!("{}", key.to_base64());
+    }
+
+    Ok(())
+}
+
+fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
+    let repo = repo::Repo::discover()?;
+    if !repo.is_unlocked()? {
+        anyhow::bail!(
+            "Repository is locked. Please run 'a8c-git-secrets unlock' first before rotating the key."
+        );
+    }
+
+    if !skip_confirmation && !confirm(&rotate_confirmation_prompt())? {
+        anyhow::bail!("Key rotation cancelled.");
+    }
+
+    let new_key = key::Key::generate();
+    repo.store_key(&new_key)
+        .context("Failed to store new key")?;
+
+    // Re-normalize filtered files to re-encrypt them with the new key
+    let filtered_files = repo.find_filtered_files()?;
+    if filtered_files.is_empty() {
+        eprintln!("Warning: No encrypted files found in the repository.");
+    } else {
+        repo.renormalize_files(&filtered_files)
+            .context("Failed to re-normalize encrypted files")?;
+    }
+
+    // Print follow-up instructions for the user
+    let new_key_b64 = new_key.to_base64();
+    let instructions = rotate_instructions(&new_key_b64, filtered_files.len());
+    println!("{}", instructions);
+
+    Ok(())
+}
+
 fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
@@ -249,6 +343,30 @@ fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
         FilterCommands::Smudge => filter::smudge_filter(&repo),
         FilterCommands::Textconv { filename } => filter::diff_textconv(&repo, &filename),
     }
+}
+
+// === Helper functions === //
+
+/// Prompt the user for confirmation (yes/no)
+///
+/// Displays the prompt message and waits for user input. Returns `true` if the user
+/// confirms with "yes" or "y" (case-insensitive), `false` otherwise.
+///
+/// # Errors
+/// Returns an error if reading from stdin or writing to stdout fails.
+fn confirm(prompt: &str) -> Result<bool> {
+    print!("{}", prompt);
+    std::io::stdout()
+        .flush()
+        .context("Failed to flush stdout")?;
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .context("Failed to read user input")?;
+
+    let input = input.trim().to_lowercase();
+    Ok(input == "yes" || input == "y")
 }
 
 /// Format initialization instructions for display to the user
@@ -283,5 +401,56 @@ fn init_instructions(key_b64: &str) -> String {
         key_b64 = key_b64,
         filter = repo::FILTER_NAME,
         diff = repo::DIFF_NAME,
+    )
+}
+
+fn rotate_confirmation_prompt() -> String {
+    indoc! {r#"
+        WARNING
+
+        This will re-encrypt all secret files in this repository with a new key.
+
+        This means that other users of this repository that had the old key will no
+        longer be able to access the content of the secret files commited after that
+        change, unless you share the new key with them.
+
+        Note that anyone who has the old key will still be able to decrypt the old
+        content of the secret files committed before this rotation in the git history.
+        For this reason, especially if you are rotating the encryption key because
+        of a leak or of someone leaving the team, it is recommended to _also_ rotate
+        the actual secrets contained in those files.
+
+        Are you sure you want to continue and rotate the encryption key? (yes/no):
+    "#}
+    .to_string()
+}
+/// Format key rotation instructions for display to the user
+fn rotate_instructions(key_b64: &str, file_count: usize) -> String {
+    format!(
+        indoc! {r#"
+            Key rotation completed successfully
+
+            New encryption key (base64, save this securely and share with your team!):
+            {key_b64}
+
+            {file_count} encrypted file(s) have been re-keyed and staged for commit.
+
+            Next steps:
+              1. Consider also rotating the actual secrets contained in the secret files
+                 (as the old key can still decrypt the old content from git history),
+                 and update the content of those files with the new secrets.
+
+              2. Commit the re-keyed secret files:
+                 git commit -m "Rotate encryption key and re-encrypt secret files"
+
+              2. Share the new key with your coworkers securely. They will need to:
+                 a. Run 'a8c-git-secrets lock' to lock their repository
+                 b. Run 'git pull' to get the re-keyed secrets
+                 c. Run 'a8c-git-secrets unlock' with the new key to unlock with the new key
+
+            Once all team members have updated to the new key, the old key can be discarded.
+        "#},
+        key_b64 = key_b64,
+        file_count = file_count,
     )
 }
