@@ -258,10 +258,14 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
             println!("  (none)");
         }
 
-        println!(
-            "\n⚠️  Note: If you created new files on your disk that are not tracked yet, \n\
-                  they won't be listed here until you `git add` them to the staging area."
-        );
+        // Only show warning if there are actually untracked files
+        if repo.has_untracked_files()? {
+            println!(
+                "\nNote: You have untracked files in your working copy. Even if some\n\
+                of those new files match the filter patterns in `.gitattributes`,\n\
+                they won't be listed here until you `git add` them to the staging area."
+            );
+        }
     } else {
         // Check status for specific files
         for file_str in &files {

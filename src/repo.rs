@@ -275,6 +275,30 @@ impl Repo {
         })
     }
 
+    /// Check if there are any untracked, unignored files in the working directory
+    pub fn has_untracked_files(&self) -> Result<bool> {
+        let repo = self.open()?;
+
+        let mut status_opts = git2::StatusOptions::new();
+        status_opts
+            .include_untracked(true)
+            .include_ignored(false)
+            .include_unmodified(false);
+
+        let statuses = repo
+            .statuses(Some(&mut status_opts))
+            .context("Failed to get git status")?;
+
+        // Check if there are any untracked files (WT_NEW)
+        for entry in statuses.iter() {
+            if entry.status().intersects(git2::Status::WT_NEW) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Get all filtered files that have local modifications (are "dirty")
     pub fn dirty_filtered_files(&self) -> Result<Vec<PathBuf>> {
         let repo = self.open()?;
@@ -455,6 +479,8 @@ impl Repo {
     }
 }
 
+// === Helper types and functions === //
+
 /// Iterator over filtered files in the git index
 ///
 /// This iterator efficiently yields files that have the encryption filter attribute set
@@ -491,8 +517,6 @@ impl<'repo> Iterator for IndexFilteredFilesIterator<'repo> {
         None
     }
 }
-
-// === Private Helper functions === //
 
 /// Get the path to the a8c-git-secrets binary.
 /// Needed internally to configure the git filters.
