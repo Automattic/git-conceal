@@ -130,9 +130,6 @@ This will:
 - Set up git filters in the git config of this working copy (if not already configured)
 - Decrypt all encrypted files in the working directory
 
-> [!NOTE]
-> Unlocking a repository can take a while if the repository has a lot of files, because `git-conceal` needs to check every file in the repository (`git ls-files`) and for each check if it has the `filter` attribute or not, to know which files to decrypt. Once you've run the `unlock` command, you won't need to run it again (unless you run `lock` at some point), and checkouts won't be affected by the delay because git will 
-
 ### Lock a Repository
 
 To remove the encryption key file from the local working copy and restore the content of the local files to their encrypted content, you can "lock" your working copy:
