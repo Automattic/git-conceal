@@ -136,9 +136,9 @@ fn cmd_init() -> Result<()> {
 fn cmd_unlock(key_source: String) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
-    // Find encrypted files and check if any have local modifications
-    let encrypted_files = repo.find_encrypted_files()?;
-    let dirty_files = repo.dirty_files(&encrypted_files)?;
+    // Find filtered files and check if any have local modifications
+    let filtered_files = repo.find_filtered_files()?;
+    let dirty_files = repo.dirty_files(&filtered_files)?;
     if !dirty_files.is_empty() {
         eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
         for file in &dirty_files {
@@ -157,8 +157,8 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     repo.setup_filters()
         .context("Failed to set up git filters")?;
 
-    // Force re-checkout of encrypted files to trigger smudge filter (decrypt them)
-    repo.force_recheckout(encrypted_files)
+    // Force re-checkout of filtered files to trigger smudge filter (decrypt them)
+    repo.force_recheckout(filtered_files)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository unlocked successfully");
@@ -168,10 +168,10 @@ fn cmd_unlock(key_source: String) -> Result<()> {
 fn cmd_lock(force: bool) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
-    // Find encrypted files and check if any have local modifications
-    let encrypted_files = repo.find_encrypted_files()?;
+    // Find filtered files and check if any have local modifications
+    let filtered_files = repo.find_filtered_files()?;
     if !force {
-        let dirty_files = repo.dirty_files(&encrypted_files)?;
+        let dirty_files = repo.dirty_files(&filtered_files)?;
         if !dirty_files.is_empty() {
             eprintln!("Error: Cannot lock repository while there are local modifications in some encrypted files:");
             for file in &dirty_files {
@@ -189,8 +189,8 @@ fn cmd_lock(force: bool) -> Result<()> {
     // Remove the encryption key file
     repo.remove_key().context("Failed to remove key file")?;
 
-    // Re-checkout encrypted files to get raw encrypted data from repository
-    repo.force_recheckout(encrypted_files)
+    // Re-checkout filtered files to get raw encrypted data from repository
+    repo.force_recheckout(filtered_files)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
@@ -204,7 +204,7 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         // Show repository status
         let is_unlocked = repo.is_unlocked()?;
         let filters_configured = repo.filters_configured()?;
-        let encrypted_files = repo.find_encrypted_files()?;
+        let filtered_files = repo.find_filtered_files()?;
 
         println!("Repository: {}", repo.workdir().display());
         println!(
@@ -216,9 +216,9 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
             if filters_configured { "yes" } else { "no" }
         );
 
-        if !encrypted_files.is_empty() {
+        if !filtered_files.is_empty() {
             println!("\nFiles configured for encryption by git filter:");
-            for file in &encrypted_files {
+            for file in &filtered_files {
                 println!("  🔒 {}", file.display());
             }
         } else {
@@ -228,11 +228,11 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         // Check status for specific files
         for file_str in &files {
             let file_path = std::path::Path::new(file_str);
-            let is_encrypted = repo.is_file_encrypted(file_path)?;
-            let status = if is_encrypted {
-                "🔒 Encrypted by git filter"
+            let is_filtered = repo.is_filtered_file(file_path)?;
+            let status = if is_filtered {
+                "🔒 Encrypted in the repository"
             } else {
-                "👀 Not encrypted"
+                "👀 Not encrypted in the repository"
             };
             println!("{:20}: {}", file_str, status);
         }

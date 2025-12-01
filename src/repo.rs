@@ -251,15 +251,15 @@ impl Repo {
     }
 
     /// Check if a specific file has the encryption filter attribute set
-    pub fn is_file_encrypted(&self, file_path: &Path) -> Result<bool> {
+    pub fn is_filtered_file(&self, file_path: &Path) -> Result<bool> {
         let rel_path = self.relative_path(file_path);
         self.has_encryption_filter(rel_path)
     }
 
     /// Find all files in the working directory that have the encryption filter attribute set
     /// Uses git2's attribute checking to properly handle .gitattributes patterns
-    pub fn find_encrypted_files(&self) -> Result<Vec<PathBuf>> {
-        let mut encrypted_files = Vec::new();
+    pub fn find_filtered_files(&self) -> Result<Vec<PathBuf>> {
+        let mut filtered_files = Vec::new();
 
         // Walk through all files in the working directory
         for entry in WalkDir::new(&self.workdir)
@@ -274,11 +274,11 @@ impl Repo {
 
             // Check if this file has the encryption filter attribute set
             if self.has_encryption_filter(rel_path)? {
-                encrypted_files.push(rel_path.to_path_buf());
+                filtered_files.push(rel_path.to_path_buf());
             }
         }
 
-        Ok(encrypted_files)
+        Ok(filtered_files)
     }
 
     /// Check if any of the given files have local modifications (are "dirty")
@@ -596,16 +596,16 @@ mod tests {
     }
 
     #[test]
-    fn test_find_encrypted_files_empty() {
+    fn test_find_filtered_files_empty() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
 
         // No files with encryption filter, so should be empty
-        let encrypted_files = repo.find_encrypted_files().unwrap();
-        assert!(encrypted_files.is_empty());
+        let filtered_files = repo.find_filtered_files().unwrap();
+        assert!(filtered_files.is_empty());
     }
 
     #[test]
-    fn test_find_encrypted_files_with_gitattributes() {
+    fn test_find_filtered_files_with_gitattributes() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
@@ -617,14 +617,14 @@ mod tests {
         // Create the file
         fs::write(repo_path.join("secret.txt"), "secret content").unwrap();
 
-        // Find encrypted files
-        let encrypted_files = repo.find_encrypted_files().unwrap();
-        assert_eq!(encrypted_files.len(), 1);
-        assert!(encrypted_files[0].ends_with("secret.txt"));
+        // Find filtered files
+        let filtered_files = repo.find_filtered_files().unwrap();
+        assert_eq!(filtered_files.len(), 1);
+        assert!(filtered_files[0].ends_with("secret.txt"));
     }
 
     #[test]
-    fn test_is_file_encrypted() {
+    fn test_is_filtered_file() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
@@ -637,17 +637,17 @@ mod tests {
         fs::write(repo_path.join("secret.txt"), "secret").unwrap();
         fs::write(repo_path.join("public.txt"), "public").unwrap();
 
-        // Check encryption status
+        // Check filter status
         assert!(repo
-            .is_file_encrypted(&repo_path.join("secret.txt"))
+            .is_filtered_file(&repo_path.join("secret.txt"))
             .unwrap());
         assert!(!repo
-            .is_file_encrypted(&repo_path.join("public.txt"))
+            .is_filtered_file(&repo_path.join("public.txt"))
             .unwrap());
     }
 
     #[test]
-    fn test_find_encrypted_files_multiple() {
+    fn test_find_filtered_files_multiple() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
@@ -666,9 +666,9 @@ mod tests {
         fs::write(repo_path.join("my.key"), "key content").unwrap();
         fs::write(repo_path.join("public.txt"), "public").unwrap();
 
-        // Find encrypted files
-        let encrypted_files = repo.find_encrypted_files().unwrap();
-        assert_eq!(encrypted_files.len(), 3);
+        // Find filtered files
+        let filtered_files = repo.find_filtered_files().unwrap();
+        assert_eq!(filtered_files.len(), 3);
     }
 
     #[test]
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_encrypted_files_in_subdirectory() {
+    fn test_find_filtered_files_in_subdirectory() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
@@ -793,9 +793,9 @@ mod tests {
         fs::create_dir_all(repo_path.join("secrets")).unwrap();
         fs::write(repo_path.join("secrets").join("secret.txt"), "secret").unwrap();
 
-        // Find encrypted files
-        let encrypted_files = repo.find_encrypted_files().unwrap();
-        assert_eq!(encrypted_files.len(), 1);
-        assert!(encrypted_files[0].to_string_lossy().contains("secrets"));
+        // Find filtered files
+        let filtered_files = repo.find_filtered_files().unwrap();
+        assert_eq!(filtered_files.len(), 1);
+        assert!(filtered_files[0].to_string_lossy().contains("secrets"));
     }
 }
