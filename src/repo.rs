@@ -258,12 +258,20 @@ impl Repo {
     /// Find all files in the repository that have the encryption filter attribute set
     ///
     /// Returns an iterator that yields filtered files as they are discovered.
-    /// Only checks files that are tracked by git (in index or untracked but not ignored),
-    /// avoiding the need to walk through ignored directories.
+    /// Only includes files that are tracked by git (in the index).
+    /// Untracked files are not included because they haven't been processed by git filters
+    /// yet and aren't in the object database.
     ///
     /// Uses git2's attribute checking to properly handle .gitattributes patterns.
-    pub fn find_filtered_files(&self) -> Result<FilteredFilesIterator> {
-        FilteredFilesIterator::new(self.clone())
+    pub fn find_filtered_files(&self) -> Result<IndexFilteredFilesIterator> {
+        let git_repo = self.open()?;
+        let index = git_repo.index().context("Failed to get git index")?;
+
+        Ok(IndexFilteredFilesIterator {
+            repo: self.clone(),
+            index,
+            current_idx: 0,
+        })
     }
 
     /// Get all filtered files that have local modifications (are "dirty")
@@ -435,7 +443,7 @@ impl Repo {
         match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
             Ok(Some(attr_value)) => Ok(attr_value == FILTER_NAME),
             Ok(None) => Ok(false),
-            Err(_) => Ok(false), // On error, assume not encrypted
+            Err(_) => Ok(false),
         }
     }
 
@@ -446,121 +454,45 @@ impl Repo {
     }
 }
 
-/// Iterator over filtered files in a repository
+/// Iterator over filtered files in the git index
 ///
 /// This iterator efficiently yields files that have the encryption filter attribute set
-/// by only checking files that are tracked by git (in index or untracked but not ignored),
-/// avoiding the need to walk through ignored directories.
-pub struct FilteredFilesIterator {
-    inner: std::iter::Chain<IndexFilteredIterator, UntrackedFilteredIterator>,
-}
-
-/// Iterator over filtered files from the git index
-struct IndexFilteredIterator {
+/// by only checking files that are tracked by git (in the index).
+/// Untracked files are not included because they haven't been processed by git filters
+/// yet and aren't in the object database.
+pub struct IndexFilteredFilesIterator {
     repo: Repo,
     index: git2::Index,
     current_idx: usize,
-    entry_count: usize,
 }
 
-/// Iterator over filtered untracked files
-struct UntrackedFilteredIterator {
-    repo: Repo,
-    untracked_paths: std::vec::IntoIter<PathBuf>,
-}
-
-impl FilteredFilesIterator {
-    fn new(repo: Repo) -> Result<Self> {
-        let git_repo = repo.open()?;
-        let index = git_repo.index().context("Failed to get git index")?;
-        let entry_count = index.len();
-
-        // Collect untracked file paths (but we'll check filters lazily)
-        let mut status_opts = git2::StatusOptions::new();
-        status_opts
-            .include_untracked(true)
-            .include_ignored(false)
-            .include_unmodified(false);
-
-        let statuses = git_repo
-            .statuses(Some(&mut status_opts))
-            .context("Failed to get git status")?;
-
-        let mut untracked_paths = Vec::new();
-        for entry in statuses.iter() {
-            // Only include untracked files (WT_NEW)
-            if entry.status().intersects(git2::Status::WT_NEW) {
-                if let Some(path) = entry.path() {
-                    untracked_paths.push(PathBuf::from(path));
-                }
-            }
-        }
-
-        let index_iter = IndexFilteredIterator {
-            repo: repo.clone(),
-            index,
-            current_idx: 0,
-            entry_count,
-        };
-
-        let untracked_iter = UntrackedFilteredIterator {
-            repo,
-            untracked_paths: untracked_paths.into_iter(),
-        };
-
-        Ok(Self {
-            inner: index_iter.chain(untracked_iter),
-        })
-    }
-}
-
-impl Iterator for FilteredFilesIterator {
+impl Iterator for IndexFilteredFilesIterator {
     type Item = Result<PathBuf>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-}
+        // Use index.iter() to iterate, but we need to track position manually
+        // since we can't store the iterator due to lifetime constraints
+        let entries = self.index.iter();
+        let mut iter = entries.skip(self.current_idx);
 
-impl Iterator for IndexFilteredIterator {
-    type Item = Result<PathBuf>;
+        while let Some(entry) = iter.next() {
+            self.current_idx += 1;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.current_idx < self.entry_count {
-            if let Some(entry) = self.index.get(self.current_idx) {
-                self.current_idx += 1;
+            let path_bytes = entry.path;
+            let path_str = match std::str::from_utf8(&path_bytes) {
+                Ok(s) => s,
+                Err(e) => return Some(Err(anyhow::anyhow!("Invalid UTF-8 in path: {}", e))),
+            };
 
-                let path_bytes = entry.path;
-                if let Ok(path_str) = std::str::from_utf8(&path_bytes) {
-                    let file_path = PathBuf::from(path_str);
-                    match self.repo.has_encryption_filter(&file_path) {
-                        Ok(true) => return Some(Ok(file_path)),
-                        Ok(false) => continue, // Not filtered, skip
-                        Err(e) => return Some(Err(e)),
-                    }
-                }
-            } else {
-                self.current_idx += 1;
-            }
-        }
-        None
-    }
-}
-
-impl Iterator for UntrackedFilteredIterator {
-    type Item = Result<PathBuf>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let file_path = self.untracked_paths.next()?;
-
-            // Check if this file has the encryption filter attribute set
+            let file_path = PathBuf::from(path_str);
             match self.repo.has_encryption_filter(&file_path) {
                 Ok(true) => return Some(Ok(file_path)),
                 Ok(false) => continue, // Not filtered, skip
                 Err(e) => return Some(Err(e)),
             }
         }
+
+        None
     }
 }
 
@@ -812,6 +744,20 @@ mod tests {
         fs::write(repo_path.join("my.key"), "key content").unwrap();
         fs::write(repo_path.join("public.txt"), "public").unwrap();
 
+        // Add files to git so they're tracked
+        Command::new("git")
+            .args([
+                "add",
+                ".gitattributes",
+                "secret1.txt",
+                "secret2.txt",
+                "my.key",
+                "public.txt",
+            ])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
         // Find filtered files
         let filtered_files: Result<Vec<_>> = repo.find_filtered_files().unwrap().collect();
         let filtered_files = filtered_files.unwrap();
@@ -984,7 +930,14 @@ mod tests {
         fs::create_dir_all(repo_path.join("secrets")).unwrap();
         fs::write(repo_path.join("secrets").join("secret.txt"), "secret").unwrap();
 
-        // Find filtered files
+        // Add files to git so they're tracked
+        Command::new("git")
+            .args(["add", ".gitattributes", "secrets/secret.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Find filtered files - should find the tracked file
         let filtered_files: Result<Vec<_>> = repo.find_filtered_files().unwrap().collect();
         let filtered_files = filtered_files.unwrap();
         assert_eq!(filtered_files.len(), 1);

@@ -247,7 +247,7 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
             if filters_configured { "yes" } else { "no" }
         );
 
-        println!("\nFiles configured for encryption by git filter:");
+        println!("\nTracked files configured for encryption by git filter:");
         let mut has_files = false;
         for file_result in repo.find_filtered_files()? {
             let file = file_result?;
@@ -257,6 +257,11 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         if !has_files {
             println!("  (none)");
         }
+
+        println!(
+            "\n⚠️  Note: If you created a new file on your disk that isn't tracked yet, \n\
+                  it won't be listed here until you at least `git add` it to the staging area."
+        );
     } else {
         // Check status for specific files
         for file_str in &files {
