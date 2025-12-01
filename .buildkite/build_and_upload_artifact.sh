@@ -2,10 +2,10 @@
 
 set -euo pipefail
 
-echo "~~~ Building Release..."
 [ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
-make build-release
 
+echo "~~~ Building Release..."
+cargo build --release
 
 echo "~~~ Uploading artifact..."
 platform_triple=$(rustc -vV | grep "^host" | awk '{print $2}')

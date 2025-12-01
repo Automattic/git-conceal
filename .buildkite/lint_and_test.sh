@@ -2,11 +2,13 @@
 
 set -euo pipefail
 
+[ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
+
 echo "~~~ Linting..."
-make lint-pedantic
+cargo clippy -- --deny warnings --allow clippy::pedantic --warn missing_docs
 
 echo "~~~ Checking Release..."
-make check-release
+cargo check --release
 
 echo "~~~ Running Tests..."
-make test
+cargo test
