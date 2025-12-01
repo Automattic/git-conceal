@@ -4,7 +4,6 @@ use git2::Repository;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use walkdir::WalkDir;
 
 /// Name of the git filter used for encryption/decryption
 pub const FILTER_NAME: &str = "a8c-git-secrets";
@@ -256,29 +255,15 @@ impl Repo {
         self.has_encryption_filter(rel_path)
     }
 
-    /// Find all files in the working directory that have the encryption filter attribute set
-    /// Uses git2's attribute checking to properly handle .gitattributes patterns
-    pub fn find_filtered_files(&self) -> Result<Vec<PathBuf>> {
-        let mut filtered_files = Vec::new();
-
-        // Walk through all files in the working directory
-        for entry in WalkDir::new(&self.workdir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
-            let full_path = entry.path();
-
-            // Get relative path from repo root
-            let rel_path = self.relative_path(full_path);
-
-            // Check if this file has the encryption filter attribute set
-            if self.has_encryption_filter(rel_path)? {
-                filtered_files.push(rel_path.to_path_buf());
-            }
-        }
-
-        Ok(filtered_files)
+    /// Find all files in the repository that have the encryption filter attribute set
+    ///
+    /// Returns an iterator that yields filtered files as they are discovered.
+    /// Only checks files that are tracked by git (in index or untracked but not ignored),
+    /// avoiding the need to walk through ignored directories.
+    ///
+    /// Uses git2's attribute checking to properly handle .gitattributes patterns.
+    pub fn find_filtered_files(&self) -> Result<FilteredFilesIterator> {
+        FilteredFilesIterator::new(self.clone())
     }
 
     /// Get all filtered files that have local modifications (are "dirty")
@@ -325,23 +310,46 @@ impl Repo {
     /// Removes files from index and checks them out from HEAD, which will trigger git filters
     ///  - To restore the files to their encrypted state after removing filters (during lock)
     ///  - Or to have the files decrypted after adding filters and key (during unlock)
-    pub fn force_recheckout(&self, files: Vec<PathBuf>) -> Result<()> {
-        if files.is_empty() {
-            return Ok(());
-        }
-
-        println!("Re-checking out {} encrypted file(s)...", files.len());
-
+    ///
+    /// Processes files from the iterator, building both git commands in a single loop
+    /// before executing them.
+    pub fn force_recheckout<I>(&self, files: I) -> Result<()>
+    where
+        I: Iterator<Item = Result<PathBuf>>,
+    {
         // NOTE: `git2`'s `checkout_head` doesn't seem to apply the smudge filter (bug in the implementation?)
         //       despite all our efforts and use of `disable_filters(false)`.
         //       This is why this method is implemented with `Command::new("git")` instead of using `git2` API.
 
+        println!("Re-checking out encrypted files...");
+
         // Step 1: Remove files from the index (equivalent to `git rm --cached <files>`)
         let mut rm_cmd = Command::new("git");
         rm_cmd.arg("rm").arg("--cached").current_dir(&self.workdir);
-        for file_path in &files {
+        // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
+        // This will trigger git filters (smudge filter if filters are configured)
+        let mut checkout_cmd = Command::new("git");
+        checkout_cmd
+            .arg("checkout")
+            .arg("HEAD")
+            .arg("--")
+            .current_dir(&self.workdir);
+
+        // Add all files to both commands in a single loop
+        let mut has_files = false;
+        for file_result in files {
+            let file_path = file_result?;
+            println!("  Will re-checkout: {}", file_path.display());
             rm_cmd.arg(file_path.as_path());
+            checkout_cmd.arg(file_path.as_path());
+            has_files = true;
         }
+        if !has_files {
+            println!(" -- No encrypted files found in the repository.");
+            return Ok(());
+        }
+
+        // Execute rm command
         let rm_output = rm_cmd
             .output()
             .context("Failed to execute git rm --cached")?;
@@ -353,17 +361,7 @@ impl Repo {
             );
         }
 
-        // Step 2: Checkout files from HEAD (equivalent to `git checkout HEAD -- <files>`)
-        // This will trigger git filters (smudge filter if filters are configured)
-        let mut checkout_cmd = Command::new("git");
-        checkout_cmd
-            .arg("checkout")
-            .arg("HEAD")
-            .arg("--")
-            .current_dir(&self.workdir);
-        for file_path in &files {
-            checkout_cmd.arg(file_path.as_path());
-        }
+        // Execute checkout command
         let checkout_output = checkout_cmd
             .output()
             .context("Failed to execute git checkout command")?;
@@ -374,10 +372,6 @@ impl Repo {
                 checkout_output.status,
                 stderr
             );
-        }
-
-        for file_path in &files {
-            println!("  Re-checked out: {}", file_path.display());
         }
 
         Ok(())
@@ -392,19 +386,28 @@ impl Repo {
     ///
     /// # Errors
     /// Returns an error if the git command fails or if any of the files cannot be processed.
-    pub fn renormalize_files(&self, files: &[PathBuf]) -> Result<()> {
-        if files.is_empty() {
-            return Ok(());
-        }
-
+    pub fn renormalize_files<I>(&self, files: I) -> Result<()>
+    where
+        I: Iterator<Item = Result<PathBuf>>,
+    {
         let mut add_cmd = Command::new("git");
         add_cmd
             .arg("add")
             .arg("--renormalize")
             .current_dir(&self.workdir);
-        for file_path in files {
+
+        let mut has_files = false;
+        for file_result in files {
+            let file_path = file_result?;
             add_cmd.arg(file_path.as_path());
+            has_files = true;
         }
+
+        if !has_files {
+            println!(" -- No encrypted files found in the repository.");
+            return Ok(());
+        }
+
         let add_output = add_cmd
             .output()
             .context("Failed to execute git add --renormalize")?;
@@ -440,6 +443,124 @@ impl Repo {
     /// If the path is already relative or can't be stripped, returns the original path
     fn relative_path<'a>(&self, file_path: &'a Path) -> &'a Path {
         file_path.strip_prefix(&self.workdir).unwrap_or(file_path)
+    }
+}
+
+/// Iterator over filtered files in a repository
+///
+/// This iterator efficiently yields files that have the encryption filter attribute set
+/// by only checking files that are tracked by git (in index or untracked but not ignored),
+/// avoiding the need to walk through ignored directories.
+pub struct FilteredFilesIterator {
+    inner: std::iter::Chain<IndexFilteredIterator, UntrackedFilteredIterator>,
+}
+
+/// Iterator over filtered files from the git index
+struct IndexFilteredIterator {
+    repo: Repo,
+    index: git2::Index,
+    current_idx: usize,
+    entry_count: usize,
+}
+
+/// Iterator over filtered untracked files
+struct UntrackedFilteredIterator {
+    repo: Repo,
+    untracked_paths: std::vec::IntoIter<PathBuf>,
+}
+
+impl FilteredFilesIterator {
+    fn new(repo: Repo) -> Result<Self> {
+        let git_repo = repo.open()?;
+        let index = git_repo.index().context("Failed to get git index")?;
+        let entry_count = index.len();
+
+        // Collect untracked file paths (but we'll check filters lazily)
+        let mut status_opts = git2::StatusOptions::new();
+        status_opts
+            .include_untracked(true)
+            .include_ignored(false)
+            .include_unmodified(false);
+
+        let statuses = git_repo
+            .statuses(Some(&mut status_opts))
+            .context("Failed to get git status")?;
+
+        let mut untracked_paths = Vec::new();
+        for entry in statuses.iter() {
+            // Only include untracked files (WT_NEW)
+            if entry.status().intersects(git2::Status::WT_NEW) {
+                if let Some(path) = entry.path() {
+                    untracked_paths.push(PathBuf::from(path));
+                }
+            }
+        }
+
+        let index_iter = IndexFilteredIterator {
+            repo: repo.clone(),
+            index,
+            current_idx: 0,
+            entry_count,
+        };
+
+        let untracked_iter = UntrackedFilteredIterator {
+            repo,
+            untracked_paths: untracked_paths.into_iter(),
+        };
+
+        Ok(Self {
+            inner: index_iter.chain(untracked_iter),
+        })
+    }
+}
+
+impl Iterator for FilteredFilesIterator {
+    type Item = Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+impl Iterator for IndexFilteredIterator {
+    type Item = Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_idx < self.entry_count {
+            if let Some(entry) = self.index.get(self.current_idx) {
+                self.current_idx += 1;
+
+                let path_bytes = entry.path;
+                if let Ok(path_str) = std::str::from_utf8(&path_bytes) {
+                    let file_path = PathBuf::from(path_str);
+                    match self.repo.has_encryption_filter(&file_path) {
+                        Ok(true) => return Some(Ok(file_path)),
+                        Ok(false) => continue, // Not filtered, skip
+                        Err(e) => return Some(Err(e)),
+                    }
+                }
+            } else {
+                self.current_idx += 1;
+            }
+        }
+        None
+    }
+}
+
+impl Iterator for UntrackedFilteredIterator {
+    type Item = Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let file_path = self.untracked_paths.next()?;
+
+            // Check if this file has the encryption filter attribute set
+            match self.repo.has_encryption_filter(&file_path) {
+                Ok(true) => return Some(Ok(file_path)),
+                Ok(false) => continue, // Not filtered, skip
+                Err(e) => return Some(Err(e)),
+            }
+        }
     }
 }
 
@@ -667,8 +788,8 @@ mod tests {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
 
         // No files with encryption filter, so should be empty
-        let filtered_files = repo.find_filtered_files().unwrap();
-        assert!(filtered_files.is_empty());
+        let filtered_files: Result<Vec<_>> = repo.find_filtered_files().unwrap().collect();
+        assert!(filtered_files.unwrap().is_empty());
     }
 
     #[test]
@@ -692,11 +813,12 @@ mod tests {
         fs::write(repo_path.join("public.txt"), "public").unwrap();
 
         // Find filtered files
-        let filtered_files = repo.find_filtered_files().unwrap();
+        let filtered_files: Result<Vec<_>> = repo.find_filtered_files().unwrap().collect();
+        let filtered_files = filtered_files.unwrap();
         assert_eq!(filtered_files.len(), 3);
-        assert!(filtered_files.contains(&repo_path.join("secret1.txt")));
-        assert!(filtered_files.contains(&repo_path.join("secret2.txt")));
-        assert!(filtered_files.contains(&repo_path.join("my.key")));
+        assert!(filtered_files.contains(&PathBuf::from("secret1.txt")));
+        assert!(filtered_files.contains(&PathBuf::from("secret2.txt")));
+        assert!(filtered_files.contains(&PathBuf::from("my.key")));
     }
 
     #[test]
@@ -816,8 +938,8 @@ mod tests {
     fn test_force_recheckout_empty_list() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
 
-        // Should succeed with empty list
-        repo.force_recheckout(vec![]).unwrap();
+        // Should succeed with empty iterator
+        repo.force_recheckout(std::iter::empty()).unwrap();
     }
 
     #[test]
@@ -872,7 +994,8 @@ mod tests {
         fs::write(repo_path.join("secrets").join("secret.txt"), "secret").unwrap();
 
         // Find filtered files
-        let filtered_files = repo.find_filtered_files().unwrap();
+        let filtered_files: Result<Vec<_>> = repo.find_filtered_files().unwrap().collect();
+        let filtered_files = filtered_files.unwrap();
         assert_eq!(filtered_files.len(), 1);
         assert!(filtered_files[0].to_string_lossy().contains("secrets"));
     }

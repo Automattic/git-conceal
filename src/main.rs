@@ -191,8 +191,7 @@ fn cmd_unlock(key_source: String) -> Result<()> {
         .context("Failed to set up git filters")?;
 
     // Force re-checkout of filtered files to trigger smudge filter (decrypt them)
-    let filtered_files = repo.find_filtered_files()?;
-    repo.force_recheckout(filtered_files)
+    repo.force_recheckout(repo.find_filtered_files()?)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository unlocked successfully");
@@ -223,8 +222,7 @@ fn cmd_lock(force: bool) -> Result<()> {
     repo.remove_key().context("Failed to remove key file")?;
 
     // Re-checkout filtered files to get raw encrypted data from repository
-    let filtered_files = repo.find_filtered_files()?;
-    repo.force_recheckout(filtered_files)
+    repo.force_recheckout(repo.find_filtered_files()?)
         .context("Failed to re-checkout encrypted files")?;
 
     println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
@@ -250,13 +248,14 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         );
 
         println!("\nFiles configured for encryption by git filter:");
-        let filtered_files = repo.find_filtered_files()?;
-        if filtered_files.is_empty() {
-            println!("\n -- No encrypted files found in working directory");
-        } else {
-            for file in &filtered_files {
-                println!("  🔒 {}", file.display());
-            }
+        let mut has_files = false;
+        for file_result in repo.find_filtered_files()? {
+            let file = file_result?;
+            println!("  🔒 {}", file.display());
+            has_files = true;
+        }
+        if !has_files {
+            println!("  (none)");
         }
     } else {
         // Check status for specific files
@@ -319,17 +318,13 @@ fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
         .context("Failed to store new key")?;
 
     // Re-normalize filtered files to re-encrypt them with the new key
-    let filtered_files = repo.find_filtered_files()?;
-    if filtered_files.is_empty() {
-        eprintln!("Warning: No encrypted files found in the repository.");
-    } else {
-        repo.renormalize_files(&filtered_files)
-            .context("Failed to re-normalize encrypted files")?;
-    }
+    println!("Re-encrypting secret files with the new key...");
+    repo.renormalize_files(repo.find_filtered_files()?)
+        .context("Failed to re-normalize encrypted files")?;
 
     // Print follow-up instructions for the user
     let new_key_b64 = new_key.to_base64();
-    let instructions = rotate_instructions(&new_key_b64, filtered_files.len());
+    let instructions = rotate_instructions(&new_key_b64);
     println!("{}", instructions);
 
     Ok(())
@@ -425,15 +420,14 @@ fn rotate_confirmation_prompt() -> String {
     .to_string()
 }
 /// Format key rotation instructions for display to the user
-fn rotate_instructions(key_b64: &str, file_count: usize) -> String {
+fn rotate_instructions(key_b64: &str) -> String {
     format!(
         indoc! {r#"
             Key rotation completed successfully
+            Encrypted file(s) have been re-keyed and staged for commit.
 
             New encryption key (base64, save this securely and share with your team!):
             {key_b64}
-
-            {file_count} encrypted file(s) have been re-keyed and staged for commit.
 
             Next steps:
               1. Consider also rotating the actual secrets contained in the secret files
@@ -451,6 +445,5 @@ fn rotate_instructions(key_b64: &str, file_count: usize) -> String {
             Once all team members have updated to the new key, the old key can be discarded.
         "#},
         key_b64 = key_b64,
-        file_count = file_count,
     )
 }
