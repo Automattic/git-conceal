@@ -36,14 +36,23 @@ impl Repo {
     pub fn discover() -> Result<Self> {
         let start_path = std::env::current_dir().context("Failed to get current directory")?;
         let repo = Repository::discover(start_path).context("Not a git repository")?;
+        Self::from_repository(&repo)
+    }
 
+    /// Create a Repo instance from a git2 Repository
+    ///
+    /// Validates that the repository is not bare and has a working directory.
+    ///
+    /// # Errors
+    /// Returns an error if the repository is bare or has no working directory.
+    fn from_repository(repo: &Repository) -> Result<Self> {
         // Reject bare repositories - this tool needs a working directory
         if repo.is_bare() {
             anyhow::bail!(
                 "Bare repositories are not supported. \
-                 This tool encrypts/decrypts files in the working directory, \
-                 which bare repositories don't have. \
-                 Please use a non-bare repository with a checked-out working tree."
+                This tool encrypts/decrypts files in the working directory, \
+                which bare repositories don't have. \
+                Please use a non-bare repository with a checked-out working tree."
             );
         }
 
@@ -53,7 +62,7 @@ impl Repo {
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Repository has no working directory. \
-                     This tool requires a non-bare repository with a checked-out working tree."
+                    This tool requires a non-bare repository with a checked-out working tree."
                 )
             })?
             .to_path_buf();
@@ -424,4 +433,366 @@ fn get_binary_path() -> Result<PathBuf> {
     };
 
     Ok(PathBuf::from(binary_name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    /// Create a temporary git repository for testing
+    fn setup_test_repo() -> Result<(TempDir, Repo)> {
+        let temp_dir = TempDir::new()?;
+        let repo_path = temp_dir.path();
+
+        // Initialize git repository
+        Command::new("git")
+            .arg("init")
+            .current_dir(repo_path)
+            .output()?;
+
+        // Set up minimal git config to avoid warnings
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()?;
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Create an initial commit so we have a HEAD
+        fs::write(repo_path.join("README.md"), "Test repo")?;
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(repo_path)
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Create Repo instance from the repository
+        let repository = Repository::open(repo_path).context("Failed to open git repository")?;
+        let repo = Repo::from_repository(&repository)?;
+
+        Ok((temp_dir, repo))
+    }
+
+    #[test]
+    fn test_repo_discover() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        assert!(repo.workdir().exists());
+    }
+
+    #[test]
+    fn test_repo_workdir() {
+        let (temp_dir, repo) = setup_test_repo().unwrap();
+        let workdir = repo.workdir();
+        // Canonicalize both paths to handle any normalization differences
+        let workdir_canonical = workdir.canonicalize().unwrap();
+        let temp_dir_canonical = temp_dir.path().canonicalize().unwrap();
+        assert_eq!(workdir_canonical, temp_dir_canonical);
+    }
+
+    #[test]
+    fn test_store_and_load_key() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let key = key::Key::generate();
+        repo.store_key(&key).unwrap();
+        let loaded_key = repo.load_key().unwrap();
+        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+    }
+
+    #[test]
+    fn test_load_key_nonexistent() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let result = repo.load_key();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Encryption key not found"));
+    }
+
+    #[test]
+    fn test_store_key_overwrites() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let key1 = key::Key::generate();
+        let key2 = key::Key::generate();
+
+        repo.store_key(&key1).unwrap();
+        assert_eq!(repo.load_key().unwrap().as_bytes(), key1.as_bytes());
+
+        repo.store_key(&key2).unwrap();
+        assert_eq!(repo.load_key().unwrap().as_bytes(), key2.as_bytes());
+    }
+
+    #[test]
+    fn test_is_unlocked() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        // Initially should be locked
+        assert!(!repo.is_unlocked().unwrap());
+
+        let key = key::Key::generate();
+        repo.store_key(&key).unwrap();
+
+        // Now should be unlocked
+        assert!(repo.is_unlocked().unwrap());
+    }
+
+    #[test]
+    fn test_remove_key() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let key = key::Key::generate();
+
+        // Store key
+        repo.store_key(&key).unwrap();
+        assert!(repo.is_unlocked().unwrap());
+
+        // Remove key
+        repo.remove_key().unwrap();
+        assert!(!repo.is_unlocked().unwrap());
+
+        // Removing again should be fine (idempotent)
+        repo.remove_key().unwrap();
+    }
+
+    #[test]
+    fn test_setup_filters() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        repo.setup_filters().unwrap();
+        assert!(repo.filters_configured().unwrap());
+    }
+
+    #[test]
+    fn test_filters_configured_initially_false() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        assert!(!repo.filters_configured().unwrap());
+    }
+
+    #[test]
+    fn test_remove_filters() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        // Setup filters
+        repo.setup_filters().unwrap();
+        assert!(repo.filters_configured().unwrap());
+
+        // Remove filters
+        repo.remove_filters().unwrap();
+        assert!(!repo.filters_configured().unwrap());
+
+        // Removing again should be fine (idempotent)
+        repo.remove_filters().unwrap();
+    }
+
+    #[test]
+    fn test_find_encrypted_files_empty() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        // No files with encryption filter, so should be empty
+        let encrypted_files = repo.find_encrypted_files().unwrap();
+        assert!(encrypted_files.is_empty());
+    }
+
+    #[test]
+    fn test_find_encrypted_files_with_gitattributes() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create a .gitattributes file with encryption filter
+        let gitattributes_content =
+            format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create the file
+        fs::write(repo_path.join("secret.txt"), "secret content").unwrap();
+
+        // Find encrypted files
+        let encrypted_files = repo.find_encrypted_files().unwrap();
+        assert_eq!(encrypted_files.len(), 1);
+        assert!(encrypted_files[0].ends_with("secret.txt"));
+    }
+
+    #[test]
+    fn test_is_file_encrypted() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create .gitattributes
+        let gitattributes_content =
+            format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create files
+        fs::write(repo_path.join("secret.txt"), "secret").unwrap();
+        fs::write(repo_path.join("public.txt"), "public").unwrap();
+
+        // Check encryption status
+        assert!(repo
+            .is_file_encrypted(&repo_path.join("secret.txt"))
+            .unwrap());
+        assert!(!repo
+            .is_file_encrypted(&repo_path.join("public.txt"))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_find_encrypted_files_multiple() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create .gitattributes with multiple patterns
+        let gitattributes_content = format!(
+            "secret1.txt filter={} diff={}\n\
+             secret2.txt filter={} diff={}\n\
+             *.key filter={} diff={}\n",
+            FILTER_NAME, DIFF_NAME, FILTER_NAME, DIFF_NAME, FILTER_NAME, DIFF_NAME
+        );
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create files
+        fs::write(repo_path.join("secret1.txt"), "secret1").unwrap();
+        fs::write(repo_path.join("secret2.txt"), "secret2").unwrap();
+        fs::write(repo_path.join("my.key"), "key content").unwrap();
+        fs::write(repo_path.join("public.txt"), "public").unwrap();
+
+        // Find encrypted files
+        let encrypted_files = repo.find_encrypted_files().unwrap();
+        assert_eq!(encrypted_files.len(), 3);
+    }
+
+    #[test]
+    fn test_dirty_files_empty() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        let files = vec![];
+        let dirty = repo.dirty_files(&files).unwrap();
+        assert!(dirty.is_empty());
+    }
+
+    #[test]
+    fn test_dirty_files_clean() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create and commit a file
+        let file_path = repo_path.join("test.txt");
+        fs::write(&file_path, "content").unwrap();
+        Command::new("git")
+            .args(["add", "test.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Add test.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // File should not be dirty
+        let files = vec![PathBuf::from("test.txt")];
+        let dirty = repo.dirty_files(&files).unwrap();
+        assert!(dirty.is_empty());
+    }
+
+    #[test]
+    fn test_dirty_files_modified() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create and commit a file
+        let file_path = repo_path.join("test.txt");
+        fs::write(&file_path, "content").unwrap();
+        Command::new("git")
+            .args(["add", "test.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Add test.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Modify the file
+        fs::write(&file_path, "modified content").unwrap();
+
+        // File should be dirty
+        let files = vec![PathBuf::from("test.txt")];
+        let dirty = repo.dirty_files(&files).unwrap();
+        assert_eq!(dirty.len(), 1);
+        assert!(dirty[0].ends_with("test.txt"));
+    }
+
+    #[test]
+    fn test_force_recheckout_empty_list() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        // Should succeed with empty list
+        repo.force_recheckout(vec![]).unwrap();
+    }
+
+    #[test]
+    fn test_relative_path() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Test with absolute path
+        let abs_path = repo_path.join("file.txt");
+        let rel_path = repo.relative_path(&abs_path);
+        assert_eq!(rel_path, Path::new("file.txt"));
+
+        // Test with relative path (should return as-is)
+        let rel_path2 = Path::new("file.txt");
+        let result = repo.relative_path(rel_path2);
+        assert_eq!(result, rel_path2);
+    }
+
+    #[test]
+    fn test_key_file_path() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+
+        let key_path = repo.key_file_path().unwrap();
+        assert!(key_path.to_string_lossy().contains(KEY_FILE_NAME));
+        assert!(key_path.to_string_lossy().contains(".git"));
+    }
+
+    #[test]
+    fn test_store_key_creates_file() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let key = key::Key::generate();
+
+        repo.store_key(&key).unwrap();
+
+        let key_path = repo.key_file_path().unwrap();
+        assert!(key_path.exists());
+        assert_eq!(fs::read(&key_path).unwrap().len(), key::Key::KEY_SIZE);
+    }
+
+    #[test]
+    fn test_find_encrypted_files_in_subdirectory() {
+        let (_temp_dir, repo) = setup_test_repo().unwrap();
+        let repo_path = repo.workdir();
+
+        // Create .gitattributes
+        let gitattributes_content =
+            format!("secrets/* filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
+        fs::write(repo_path.join(".gitattributes"), gitattributes_content).unwrap();
+
+        // Create subdirectory and file
+        fs::create_dir_all(repo_path.join("secrets")).unwrap();
+        fs::write(repo_path.join("secrets").join("secret.txt"), "secret").unwrap();
+
+        // Find encrypted files
+        let encrypted_files = repo.find_encrypted_files().unwrap();
+        assert_eq!(encrypted_files.len(), 1);
+        assert!(encrypted_files[0].to_string_lossy().contains("secrets"));
+    }
 }
