@@ -520,7 +520,7 @@ impl<'repo> Iterator for IndexFilteredFilesIterator<'repo> {
     }
 }
 
-/// Get the path to the a8c-git-secrets binary.
+/// Get the path to the  binary.
 /// Needed internally to configure the git filters.
 fn get_binary_path() -> Result<PathBuf> {
     // First, try using the current executable path (most reliable)

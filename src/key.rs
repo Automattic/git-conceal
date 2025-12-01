@@ -5,7 +5,7 @@ use std::io::Read;
 use std::ops::Deref;
 use std::path::Path;
 
-/// Encryption key for a8c-git-secrets
+/// Symmetric key for encryption/decryption
 ///
 /// This type wraps the raw key bytes and provides a safe API for key operations.
 /// The underlying representation is only exposed when needed for cryptographic operations.

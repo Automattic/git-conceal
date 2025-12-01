@@ -1,4 +1,4 @@
-# a8c-git-secrets
+# git-conceal
 
 This tool provides transparent encryption of files in git repositories using a symmetric key.
 Its goal is to allow you to store some secret files as encrypted in an otherwise public repo.
@@ -14,7 +14,7 @@ It has been inspired by [git-crypt](https://github.com/AGWA/git-crypt), but writ
 
 ## Overview
 
- - After you run `a8c-git-secrets init` to generate a cryptographic key and configure your working copy, just list the files you want to encrypt on commit in your `.gitattributes` file.
+ - After you run `git-conceal init` to generate a cryptographic key and configure your working copy, just list the files you want to encrypt on commit in your `.gitattributes` file.
  - At that point, files will be in clear text in your working copy (since you have the key locally)—so e.g. your compiler will be able use them just like any other file—but it will be encrypted on the fly by `git` on `commit`—so that only the encrypted content is stored in the repository (object database and remote repos)
  - On subsequent `git checkout`, only if the user doing the `checkout` has the filters and key configured on their machine will the content be decrypted in their local working copy.
 
@@ -26,16 +26,16 @@ You can learn more about technical details of how git filter works in [this arti
 
 ```bash
 git clone <repository-url>
-cd a8c-git-secrets
+cd git-conceal
 cargo build --release
 ```
 
-The binary will be at `target/release/a8c-git-secrets` (or `target/release/a8c-git-secrets.exe` on Windows).
+The binary will be at `target/release/git-conceal` (or `target/release/git-conceal.exe` on Windows).
 
 ### Download from GitHub Release
 
 Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from the latest GitHub release.
-Then rename it `a8c-git-secrets` and save it ideally in a directory in your `$PATH` (e.g. `/usr/local/bin`). That's it!
+Then rename it `git-conceal` and save it ideally in a directory in your `$PATH` (e.g. `/usr/local/bin`). That's it!
 
 ## Usage
 
@@ -45,12 +45,12 @@ To set up encryption for a git repository that doesn't use this tool yet:
 
 ```bash
 cd /path/to/your/repo
-a8c-git-secrets init
+git-conceal init
 ```
 
 This will:
 - Generate a new 256-bit encryption key
-- Store the key in `.git/a8c-git-secrets.key` with secure file permissions.
+- Store the key in `.git/git-conceal.key` with secure file permissions.
 - Configure git filters for encryption/decryption
 - Display the key so you can share it with your coworkers.
 
@@ -61,21 +61,21 @@ You will only have to do this once.
 
 ### Configure Files to Encrypt
 
-Create or edit `.gitattributes` in your repository root to specify which files should be encrypted by adding the `filter=a8c-git-secrets` attribute to them, for example:
+Create or edit `.gitattributes` in your repository root to specify which files should be encrypted by adding the `filter=git-conceal` attribute to them, for example:
 
 ```
 # Encrypt specific files
-secretfile filter=a8c-git-secrets diff=a8c-git-secrets
-config/secrets.yml filter=a8c-git-secrets diff=a8c-git-secrets
+secretfile filter=git-conceal diff=git-conceal
+config/secrets.yml filter=git-conceal diff=git-conceal
 
 # Encrypt all files with specific extensions
-*.key filter=a8c-git-secrets diff=a8c-git-secrets
-*.pem filter=a8c-git-secrets diff=a8c-git-secrets
-*.p12 filter=a8c-git-secrets diff=a8c-git-secrets
+*.key filter=git-conceal diff=git-conceal
+*.pem filter=git-conceal diff=git-conceal
+*.p12 filter=git-conceal diff=git-conceal
 
 # Encrypt all files in a directory (use ** to match recursively)
-secrets/** filter=a8c-git-secrets diff=a8c-git-secrets
-private/** filter=a8c-git-secrets diff=a8c-git-secrets
+secrets/** filter=git-conceal diff=git-conceal
+private/** filter=git-conceal diff=git-conceal
 ```
 
 > [!IMPORTANT]
@@ -87,7 +87,7 @@ private/** filter=a8c-git-secrets diff=a8c-git-secrets
 
 ### Add new files
 
-At that point, when you will `git add` a file to that repo that matches one of the `filter=a8c-git-secrets` pattern, that file's blob/content will be encrypted on the fly by git.
+At that point, when you will `git add` a file to that repo that matches one of the `filter=git-conceal` pattern, that file's blob/content will be encrypted on the fly by git.
 
 > [!IMPORTANT]
 > Make sure the file pattern is listed in `.gitattributes` _before_ you `git add` the file containing secrets, as the git filters are applied at the time you `git add`.
@@ -97,44 +97,44 @@ At that point, when you will `git add` a file to that repo that matches one of t
 
 ### Verify if files are encrypted
 
-To give you peace of mind and validate that files you added to your repo are processed by the git filter, you can use `a8c-git-secrets status` (to list all the files that will go through the encryption filter) or `a8c-git-secrets status <file>` to check a specific file. This command will validate that the file would match a pattern of your `.gitattributes` that has the `filter=a8c-git-secrets` attribute set.
+To give you peace of mind and validate that files you added to your repo are processed by the git filter, you can use `git-conceal status` (to list all the files that will go through the encryption filter) or `git-conceal status <file>` to check a specific file. This command will validate that the file would match a pattern of your `.gitattributes` that has the `filter=git-conceal` attribute set.
 
 You can also check what the blob content of the corresponding object looks like in the repository database by using `git show :<file>` (or `git show HEAD:<file>` if it's commited into `HEAD` already).
-This will show the raw content as stored in the repository. So even if `cat my-secret-file.txt` will show you the clear text locally (assuming you have unlocked your working copy with the right key), `git show :my-secret-file.txt` will show you the raw, encrypted binary data stored in the repository (assuming that file matches a `.gitattributes` pattern with `filter=a8c-git-secrets` set)
+This will show the raw content as stored in the repository. So even if `cat my-secret-file.txt` will show you the clear text locally (assuming you have unlocked your working copy with the right key), `git show :my-secret-file.txt` will show you the raw, encrypted binary data stored in the repository (assuming that file matches a `.gitattributes` pattern with `filter=git-conceal` set)
 
 ### Unlock a Repository
 
-After you freshly clone a repository which contains files which has been encrypted by `a8c-git-secrets`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
+After you freshly clone a repository which contains files which has been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
 
 ```bash
 # Option 1: Provide the key via an environment variable (base64 encoded)
 export GIT_SECRETS_KEY="YOUR_BASE64_KEY"
-a8c-git-secrets unlock env:GIT_SECRETS_KEY
+git-conceal unlock env:GIT_SECRETS_KEY
 
 # Option 2: Provide a path to a from file containing the raw binary, 32 bytes key
-a8c-git-secrets unlock /path/to/key.bin
+git-conceal unlock /path/to/key.bin
 
 # Option 3: Provide it via stdin (expects raw binary, 32 bytes as input)
-cat /path/to/key.bin | a8c-git-secrets unlock -
+cat /path/to/key.bin | git-conceal unlock -
 # Or convert from base64:
-echo "YOUR_BASE64_KEY" | base64 -d | a8c-git-secrets unlock -
+echo "YOUR_BASE64_KEY" | base64 -d | git-conceal unlock -
 ```
 
 This will:
-- Store the key in `.git/a8c-git-secrets.key` with secure file permissions
+- Store the key in `.git/git-conceal.key` with secure file permissions
 - Set up git filters in the git config of this working copy (if not already configured)
 - Decrypt all encrypted files in the working directory
 
 > [!NOTE]
-> Unlocking a repository can take a while if the repository has a lot of files, because `a8c-git-secrets` needs to check every file in the repository (`git ls-files`) and for each check if it has the `filter` attribute or not, to know which files to decrypt. Once you've run the `unlock` command, you won't need to run it again (unless you run `lock` at some point), and checkouts won't be affected by the delay because git will 
+> Unlocking a repository can take a while if the repository has a lot of files, because `git-conceal` needs to check every file in the repository (`git ls-files`) and for each check if it has the `filter` attribute or not, to know which files to decrypt. Once you've run the `unlock` command, you won't need to run it again (unless you run `lock` at some point), and checkouts won't be affected by the delay because git will 
 
 ### Lock a Repository
 
 To remove the encryption key file from the local working copy and restore the content of the local files to their encrypted content, you can "lock" your working copy:
 
 ```bash
-a8c-git-secrets lock
-a8c-git-secrets lock --force # to ignore local changes if any
+git-conceal lock
+git-conceal lock --force # to ignore local changes if any
 ```
 
 > [!TIP]
@@ -146,7 +146,7 @@ a8c-git-secrets lock --force # to ignore local changes if any
 To see the current encryption status:
 
 ```bash
-a8c-git-secrets status
+git-conceal status
 ```
 
 This shows:
@@ -155,7 +155,7 @@ This shows:
 - Which file patterns are encrypted (from `.gitattributes`)
 
 ```bash
-a8c-git-secrets status <FILES>
+git-conceal status <FILES>
 ```
 
 This shows the status of each file (i.e. if it will be processed by the files according to the `.gitattributes` or not)
@@ -165,7 +165,7 @@ This shows the status of each file (i.e. if it will be processed by the files ac
 If you need to show the local symmetric encryption key you are using in your local working copy, typically so you can share it with your coworkers so that they can decrypt their working copy too:
 
 ```bash
-a8c-git-secrets key show
+git-conceal key show
 ```
 
 ### Rotate the encryption key
@@ -173,7 +173,7 @@ a8c-git-secrets key show
 If your symmetric encryption key has leaked somehow, or if one of your coworkers leaves your team/company and you want to rotate your secrets to ensure they can't access your new secrets anymore even if they had the key at some point, there's an easy way to rotate the encryption key used by an encrypted repo:
 
 ```bash
-a8c-git-secrets key rotate
+git-conceal key rotate
 ```
 
 Your working copy has to be unlocked with the current key before you can call this command.
@@ -194,17 +194,17 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 3. **Deterministic Encryption**: The same plaintext always encrypts to the same ciphertext (using a deterministic IV derived from the file content). This allows git to detect when files haven't changed.
 
-4. **Key Storage**: The encryption key is stored in `.git/a8c-git-secrets.key` (local to your repository clone). The file is created with secure permissions (read/write for owner only on Unix systems). It is never committed to the repository.
+4. **Key Storage**: The encryption key is stored in `.git/git-conceal.key` (local to your repository clone). The file is created with secure permissions (read/write for owner only on Unix systems). It is never committed to the repository.
 
 ## Security Considerations
 
-- **Key Management**: The encryption key is stored in plaintext in `.git/a8c-git-secrets.key`. The file is automatically created with secure permissions (mode 0600 on Unix systems - read/write for owner only). On Unix systems, you can verify permissions with:
+- **Key Management**: The encryption key is stored in plaintext in `.git/git-conceal.key`. The file is automatically created with secure permissions (mode 0600 on Unix systems - read/write for owner only). On Unix systems, you can verify permissions with:
   ```bash
-  ls -l .git/a8c-git-secrets.key
+  ls -l .git/git-conceal.key
   ```
   If permissions are incorrect, fix them with:
   ```bash
-  chmod 600 .git/a8c-git-secrets.key
+  chmod 600 .git/git-conceal.key
   ```
   Protect your `.git` directory appropriately - it should not be accessible to other users on the system.
 

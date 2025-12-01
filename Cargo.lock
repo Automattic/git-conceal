@@ -3,31 +3,6 @@
 version = 4
 
 [[package]]
-name = "a8c-git-secrets"
-version = "0.1.0"
-dependencies = [
- "aes",
- "anyhow",
- "base64",
- "clap",
- "const_format",
- "ctr",
- "dirs",
- "git2",
- "hex",
- "hkdf",
- "hmac",
- "indoc",
- "libc",
- "rand",
- "sha2",
- "tempfile",
- "thiserror",
- "walkdir",
- "winapi",
-]
-
-[[package]]
 name = "aes"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -342,6 +317,31 @@ dependencies = [
  "libc",
  "r-efi",
  "wasip2",
+]
+
+[[package]]
+name = "git-conceal"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "anyhow",
+ "base64",
+ "clap",
+ "const_format",
+ "ctr",
+ "dirs",
+ "git2",
+ "hex",
+ "hkdf",
+ "hmac",
+ "indoc",
+ "libc",
+ "rand",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "walkdir",
+ "winapi",
 ]
 
 [[package]]

@@ -145,7 +145,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
 fn derive_hmac_key(encryption_key: &key::Key) -> [u8; key::Key::KEY_SIZE] {
     let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
     let mut hmac_key = [0u8; key::Key::KEY_SIZE];
-    kdf.expand(b"a8c-git-secrets-hmac", &mut hmac_key)
+    kdf.expand(b"git-conceal-hmac", &mut hmac_key)
         .expect("HKDF expansion failed (output length mismatch)");
     hmac_key
 }

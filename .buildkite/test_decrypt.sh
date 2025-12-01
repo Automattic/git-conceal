@@ -4,8 +4,8 @@ set -euo pipefail
 
 echo "~~~ Download binary"
 platform_triple="$1"
-buildkite-agent artifact download "a8c-git-secrets-${platform_triple}-*" .
-binary=$(find . -name "a8c-git-secrets-${platform_triple}-*" -type f -print -quit)
+buildkite-agent artifact download "git-conceal-${platform_triple}-*" .
+binary=$(find . -name "git-conceal-${platform_triple}-*" -type f -print -quit)
 chmod +x "$binary"
 echo "Binary: $binary"
 

@@ -1,7 +1,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-//! a8c-git-secrets - Transparent file encryption in git using symmetric keys
+//! Transparent file encryption in git using symmetric keys
 //!
 //! This tool provides transparent encryption and decryption of files in git repositories,
 //! similar to git-crypt but using only symmetric keys (no GPG support).

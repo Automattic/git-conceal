@@ -1,5 +1,5 @@
 [package]
-name = "a8c-git-secrets"
+name = "git-conceal"
 version = "0.1.0"
 authors = ["Automattic <mobile@automattic.com>"]
 description = "Transparent file encryption in git using symmetric keys"
@@ -8,7 +8,7 @@ rust-version = "1.70"
 edition = "2021"
 
 [[bin]]
-name = "a8c-git-secrets"
+name = "git-conceal"
 path = "src/main.rs"
 
 [dependencies]
