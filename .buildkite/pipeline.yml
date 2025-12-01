@@ -5,30 +5,37 @@ env:
   IMAGE_ID: "xcode-26.0"
 
 steps:
-  - group: "🕵️ Lint and Test"
+  - label: "🕵️ Lint"
+    agents:
+      queue: default
+    command: |
+      .buildkite/install_rust.sh
+      .buildkite/lint.sh
+
+  - group: "🔬 Test"
     steps:
-      - label: "🕵️ Test macOS"
+      - label: "🔬 Test macOS"
         key: check-macos
         agents:
           queue: mac
         command: |
           .buildkite/install_rust.sh
-          .buildkite/lint_and_test.sh
+          .buildkite/test.sh
 
-      - label: "🕵️ Test Linux"
+      - label: "🔬 Test Linux"
         key: check-linux
         agents:
           queue: default
         command: |
           .buildkite/install_rust.sh
-          .buildkite/lint_and_test.sh
+          .buildkite/test.sh
 
-      - label: "🕵️ Test Windows"
+      - label: "🔬 Test Windows"
         key: check-windows
         agents:
           queue: windows
         command: |
-          bash .buildkite/lint_and_test.sh
+          bash .buildkite/test.sh
 
   - group: "Build"
     if: build.branch == 'trunk' || build.tag != null
