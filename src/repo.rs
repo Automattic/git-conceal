@@ -826,9 +826,6 @@ mod tests {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
 
-        // Setup filters
-        repo.setup_filters().unwrap();
-
         // Create .gitattributes with encryption filter
         let gitattributes_content =
             format!("secret.txt filter={} diff={}\n", FILTER_NAME, DIFF_NAME);
@@ -856,9 +853,6 @@ mod tests {
     fn test_dirty_filtered_files_dirty_but_not_filtered() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
-
-        // Setup filters
-        repo.setup_filters().unwrap();
 
         // Create .gitattributes with encryption filter for secret.txt only
         let gitattributes_content =
@@ -891,9 +885,6 @@ mod tests {
     fn test_dirty_filtered_files_some_dirty_and_filtered() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
         let repo_path = repo.workdir();
-
-        // Setup filters
-        repo.setup_filters().unwrap();
 
         // Create .gitattributes with encryption filter for secret files
         let gitattributes_content = format!(
