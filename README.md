@@ -8,7 +8,7 @@ It has been inspired by [git-crypt](https://github.com/AGWA/git-crypt), but writ
 ## Features
 
  - **Transparent encryption/decryption**: Files are automatically encrypted on commit and decrypted on checkout, thanks to [git filters built-in feature](https://git-scm.com/docs/gitattributes#_filter)
- - **Symmetric key encryption**: Uses AES-256-CTR with deterministic IVs (compatible with git's change detection)
+ - **Symmetric key encryption**: Uses AES-256-CTR with deterministic IVs
  - **Supports key rotation**: If your key gets leaked or a coworker leaves your team, you can rotate your secrets and encryption key easily
  - **Cross-platform**: Works on macOS, Linux, and Windows
 
@@ -22,6 +22,13 @@ You can learn more about technical details of how git filter works in [this arti
 
 ## Installation
 
+### Download from GitHub Release
+
+1. Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest).
+1. Rename it `git-conceal` (or `git-conceal.exe` on Windows) and save it in a directory in your `$PATH` (e.g. `/usr/local/bin`)
+1. On macOS/Linux, ensure to make it executable (`chmod +x git-conceal`)
+1. On macOS, you might need to remove the quarantine attribute too before you can run it: `xattr -d com.apple.quarantine git-conceal`
+
 ### Build from Source
 
 ```bash
@@ -31,11 +38,6 @@ cargo build --release
 ```
 
 The binary will be at `target/release/git-conceal` (or `target/release/git-conceal.exe` on Windows).
-
-### Download from GitHub Release
-
-Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest).
-Then rename it `git-conceal` and save it ideally in a directory in your `$PATH` (e.g. `/usr/local/bin`). That's it!
 
 ## Usage
 
@@ -220,6 +222,9 @@ This command will explain the impacts of rotating the key and ask for confirmati
 - **File Metadata**: File names, commit messages, and other metadata are not encrypted.
 - **File Size**: Encrypted files are not compressible by git.
 
+## New Releases
+
+Releases are automated by our CI every time we make a `git tag` on the repo.
 
 ## License
 
