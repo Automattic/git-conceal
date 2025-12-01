@@ -1,9 +1,12 @@
 # git-conceal
 
-This tool provides transparent encryption of files in git repositories using a symmetric key.
-Its goal is to allow you to store some secret files as encrypted in an otherwise public repo.
+<table><tr height="40px">
+<td width="150px"><img alt="icon" src="Icon.png" width="128px" height="128px" /></td>
+<td>This tool provides transparent encryption of files in git repositories using a symmetric key.<br />
+Its goal is to allow you to store some secret files as encrypted in an otherwise public repo.</td>
+</tr></table>
 
-It has been inspired by [git-crypt](https://github.com/AGWA/git-crypt), but written in Rust to have first-class cross-platform support.
+It has been inspired by [git-crypt](https://github.com/AGWA/git-crypt), but written in Rust to have first-class **cross-platform support**.
 
 ## Features
 
