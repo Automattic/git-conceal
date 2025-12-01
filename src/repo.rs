@@ -1,4 +1,5 @@
 use crate::key;
+use crate::BINARY_NAME;
 use anyhow::{Context, Result};
 use git2::Repository;
 use std::fs;
@@ -7,13 +8,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Name of the git filter used for encryption/decryption
-pub const FILTER_NAME: &str = "a8c-git-secrets";
+pub const FILTER_NAME: &str = BINARY_NAME; // same as the binary name
 
 /// Name of the git diff driver used for showing decrypted content in diffs
-pub const DIFF_NAME: &str = "a8c-git-secrets";
+pub const DIFF_NAME: &str = BINARY_NAME; // same as the binary name
 
 /// Filename for the encryption key file stored in .git directory
-const KEY_FILE_NAME: &str = "a8c-git-secrets.key";
+const KEY_FILE_NAME: &str = const_format::formatcp!("{}.key", BINARY_NAME);
 
 /// Git repository wrapper
 ///
@@ -182,8 +183,9 @@ impl Repo {
         let key_file = self.key_file_path()?;
         key::Key::from_file(&key_file).with_context(|| {
             format!(
-                "Encryption key not found at {}. Run 'a8c-git-secrets unlock' first.",
-                key_file.display()
+                "Encryption key not found at {}. Run '{} unlock' first.",
+                key_file.display(),
+                BINARY_NAME
             )
         })
     }
@@ -546,9 +548,9 @@ fn get_binary_path() -> Result<PathBuf> {
     // Fallback: use the binary name (git will look in PATH)
     // This is less ideal but acceptable if the binary is in PATH
     let binary_name = if cfg!(windows) {
-        "a8c-git-secrets.exe"
+        const_format::formatcp!("{}.exe", BINARY_NAME)
     } else {
-        "a8c-git-secrets"
+        BINARY_NAME
     };
 
     Ok(PathBuf::from(binary_name))

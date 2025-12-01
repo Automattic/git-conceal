@@ -19,8 +19,11 @@ use clap::{Parser, Subcommand};
 use indoc::indoc;
 use std::io::Write;
 
+/// Binary name, obtained from Cargo.toml at compile time
+pub const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
+
 #[derive(Parser)]
-#[command(name = "a8c-git-secrets")]
+#[command(name = BINARY_NAME)]
 #[command(about = "Transparent file encryption in git using symmetric keys")]
 #[command(version)]
 struct Cli {
@@ -33,9 +36,9 @@ enum Commands {
     // Init
     #[command(
         about = "Initialize a repository for encryption",
-        long_about = "Use this command to set up a repository to start using a8c-git-secrets. \n\
+        long_about = const_format::formatcp!("Use this command to set up a repository to start using {}. \n\
                       It generates an encryption key, sets up git filters locally for the repository, \
-                      and provides instructions to save the key and how to start adding files to be encrypted."
+                      and provides instructions to save the key and how to start adding files to be encrypted.", BINARY_NAME)
     )]
     Init,
     // Unlock
@@ -143,13 +146,13 @@ fn cmd_init() -> Result<()> {
 
     // Check if already initialized
     if repo.filters_configured()? {
-        eprintln!(
-            "Repository is already initialized for a8c-git-secrets (filters already configured)"
-        );
-        return Ok(());
+        anyhow::bail!(
+            "Repository is already initialized for {} (filters already configured)",
+            BINARY_NAME
+        )
     }
     if repo.is_unlocked()? {
-        anyhow::bail!("Repository is already configured and unlocked (key file exists)");
+        anyhow::bail!("Repository is already configured and unlocked (key file exists)")
     }
 
     // Generate a new key
@@ -294,7 +297,8 @@ fn cmd_key_show(raw: bool) -> Result<()> {
     let repo = repo::Repo::discover()?;
     if !repo.is_unlocked()? {
         anyhow::bail!(
-            "Repository is locked (no key file found). Run 'a8c-git-secrets unlock' first."
+            "Repository is locked (no key file found). Run '{} unlock' first.",
+            BINARY_NAME
         );
     }
 
@@ -314,7 +318,8 @@ fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
     let repo = repo::Repo::discover()?;
     if !repo.is_unlocked()? {
         anyhow::bail!(
-            "Repository is locked. Please run 'a8c-git-secrets unlock' first before rotating the key."
+            "Repository is locked. Please run '{} unlock' first before rotating the key.",
+            BINARY_NAME
         );
     }
 
@@ -377,7 +382,7 @@ fn confirm(prompt: &str) -> Result<bool> {
 fn init_instructions(key_b64: &str) -> String {
     format!(
         indoc! {r#"
-            Repository initialized for a8c-git-secrets
+            Repository initialized for {bin_name}
 
             Your encryption key (base64, save this securely!):
             {key_b64}
@@ -385,12 +390,11 @@ fn init_instructions(key_b64: &str) -> String {
             Once you share this key with users you trust, they can unlock their working copy using one of these methods:
               - From environment variable (base64):
                 export GIT_SECRETS_KEY='{key_b64}'
-                a8c-git-secrets unlock env:GIT_SECRETS_KEY
+                {bin_name} unlock env:GIT_SECRETS_KEY
               - From file (raw binary, 32 bytes):
-                echo '{key_b64}' | base64 -d > /path/to/key.bin
-                a8c-git-secrets unlock /path/to/key.bin
+                {bin_name} unlock /path/to/key.bin
               - From stdin (raw binary, 32 bytes):
-                echo '{key_b64}' | base64 -d | a8c-git-secrets unlock -
+                echo '{key_b64}' | base64 -d | {bin_name} unlock -
 
             To start adding files to be encrypted in this repository:
               - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:
@@ -400,8 +404,9 @@ fn init_instructions(key_b64: &str) -> String {
                 ```
               - `git add` and `git commit` those files, alongside the `.gitattributes` file.
                 The files having the `filter` attribute set will be encrypted on commit and decrypted on checkout automatically.
-              - Run 'a8c-git-secrets status' to validate the list of files that are encrypted.
+              - Run '{bin_name} status' to validate the list of files that are encrypted.
         "#},
+        bin_name = BINARY_NAME,
         key_b64 = key_b64,
         filter = repo::FILTER_NAME,
         diff = repo::DIFF_NAME,
@@ -447,12 +452,13 @@ fn rotate_instructions(key_b64: &str) -> String {
                  git commit -m "Rotate encryption key and re-encrypt secret files"
 
               2. Share the new key with your coworkers securely. They will need to:
-                 a. Run 'a8c-git-secrets lock' to lock their repository
+                 a. Run '{bin_name} lock' to lock their repository
                  b. Run 'git pull' to get the re-keyed secrets
-                 c. Run 'a8c-git-secrets unlock' with the new key to unlock with the new key
+                 c. Run '{bin_name} unlock' with the new key to unlock with the new key
 
             Once all team members have updated to the new key, the old key can be discarded.
         "#},
+        bin_name = BINARY_NAME,
         key_b64 = key_b64,
     )
 }
