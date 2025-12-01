@@ -12,6 +12,7 @@ steps:
         agents:
           queue: mac
         command: |
+          .buildkite/install_rust.sh
           .buildkite/lint_and_test.sh
 
       - label: "🕵️ Test Linux"
@@ -19,6 +20,7 @@ steps:
         agents:
           queue: default
         command: |
+          .buildkite/install_rust.sh
           .buildkite/lint_and_test.sh
 
       - label: "🕵️ Test Windows"
@@ -26,6 +28,7 @@ steps:
         agents:
           queue: windows
         command: |
+          bash .buildkite/install_rust.sh
           bash .buildkite/lint_and_test.sh
 
   - group: "Build"
@@ -37,8 +40,7 @@ steps:
         agents:
           queue: mac
         command: |
-          echo "~~~ Installing Rust via Homebrew..."
-          brew install rust
+          .buildkite/install_rust.sh
           .buildkite/build_and_upload_artifact.sh
 
       - label: "Build Linux"
@@ -47,8 +49,7 @@ steps:
         agents:
           queue: default
         command: |
-          echo "~~~ Installing Rust via rustup..."
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          .buildkite/install_rust.sh
           .buildkite/build_and_upload_artifact.sh
 
       - label: "Build Windows"
@@ -57,6 +58,7 @@ steps:
         agents:
           queue: windows
         command: |
+          bash .buildkite/install_rust.sh
           bash .buildkite/build_and_upload_artifact.sh .exe
 
   - label: "Create GitHub Release"
