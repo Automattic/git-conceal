@@ -223,4 +223,4 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 ## License
 
-MIT
+[MPL-2.0](./LICENSE)
