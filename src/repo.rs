@@ -6,6 +6,7 @@ use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 
 /// Name of the git filter used for encryption/decryption
 pub const FILTER_NAME: &str = BINARY_NAME; // same as the binary name
@@ -18,11 +19,12 @@ const KEY_FILE_NAME: &str = const_format::formatcp!("{}.key", BINARY_NAME);
 
 /// Git repository wrapper
 ///
-/// This type encapsulates the repository working directory path,
-/// and provides a clean API for git operations in the context of this tool.
+/// This type encapsulates the repository working directory path and the opened
+/// git repository instance, providing a clean API for git operations in the context of this tool.
 #[derive(Clone)]
 pub struct Repo {
     workdir: PathBuf,
+    git_repo: Rc<Repository>,
 }
 
 impl Repo {
@@ -36,8 +38,8 @@ impl Repo {
     /// so bare repositories are not supported.
     pub fn discover() -> Result<Self> {
         let start_path = std::env::current_dir().context("Failed to get current directory")?;
-        let repo = Repository::discover(start_path).context("Not a git repository")?;
-        Self::from_repository(&repo)
+        let git_repo = Repository::discover(start_path).context("Not a git repository")?;
+        Self::from_repository(git_repo)
     }
 
     /// Create a Repo instance from a git2 Repository
@@ -46,9 +48,9 @@ impl Repo {
     ///
     /// # Errors
     /// Returns an error if the repository is bare or has no working directory.
-    fn from_repository(repo: &Repository) -> Result<Self> {
+    fn from_repository(git_repo: Repository) -> Result<Self> {
         // Reject bare repositories - this tool needs a working directory
-        if repo.is_bare() {
+        if git_repo.is_bare() {
             anyhow::bail!(
                 "Bare repositories are not supported. \
                 This tool encrypts/decrypts files in the working directory, \
@@ -58,7 +60,7 @@ impl Repo {
         }
 
         // Get the working directory root
-        let workdir = repo
+        let workdir = git_repo
             .workdir()
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -68,7 +70,10 @@ impl Repo {
             })?
             .to_path_buf();
 
-        Ok(Self { workdir })
+        Ok(Self {
+            workdir,
+            git_repo: Rc::new(git_repo),
+        })
     }
 
     /// Get the repository working directory path
@@ -76,21 +81,9 @@ impl Repo {
         &self.workdir
     }
 
-    /// Open the git repository
-    ///
-    /// Returns a `Repository` instance for the repository at this `Repo`'s working directory.
-    ///
-    /// # Errors
-    /// Returns an error if the repository cannot be opened.
-    fn open(&self) -> Result<Repository> {
-        Repository::open(&self.workdir).context("Failed to open git repository")
-    }
-
     /// Configure git filters for encryption/decryption
     pub fn setup_filters(&self) -> Result<()> {
-        let repo = self.open()?;
-
-        let mut config = repo.config().context("Failed to get git config")?;
+        let mut config = self.git_repo.config().context("Failed to get git config")?;
 
         let binary_path = get_binary_path().context("Failed to determine binary path")?;
         let binary_str = binary_path.to_string_lossy();
@@ -129,8 +122,7 @@ impl Repo {
 
     /// Check if filters are already configured
     pub fn filters_configured(&self) -> Result<bool> {
-        let repo = self.open()?;
-        let config = repo.config().context("Failed to get git config")?;
+        let config = self.git_repo.config().context("Failed to get git config")?;
         match config.get_string(&format!("filter.{}.clean", FILTER_NAME)) {
             Ok(_) => Ok(true),
             Err(e) => {
@@ -148,8 +140,7 @@ impl Repo {
 
     /// Remove git filters configuration
     pub fn remove_filters(&self) -> Result<()> {
-        let repo = self.open()?;
-        let mut config = repo.config().context("Failed to get git config")?;
+        let mut config = self.git_repo.config().context("Failed to get git config")?;
 
         let mut errors = Vec::new();
         let filter_keys = [
@@ -266,12 +257,11 @@ impl Repo {
     /// yet and aren't in the object database.
     ///
     /// Uses git2's attribute checking to properly handle .gitattributes patterns.
-    pub fn find_filtered_files(&self) -> Result<IndexFilteredFilesIterator<'_>> {
-        let git_repo = self.open()?;
-        let index = git_repo.index().context("Failed to get git index")?;
+    pub fn find_filtered_files(&self) -> Result<IndexFilteredFilesIterator> {
+        let index = self.git_repo.index().context("Failed to get git index")?;
         let length = index.len();
         Ok(IndexFilteredFilesIterator {
-            repo: self,
+            repo: self.clone(),
             git_index: index,
             range: 0..length,
         })
@@ -279,15 +269,14 @@ impl Repo {
 
     /// Check if there are any untracked, unignored files in the working directory
     pub fn has_untracked_files(&self) -> Result<bool> {
-        let repo = self.open()?;
-
         let mut status_opts = git2::StatusOptions::new();
         status_opts
             .include_untracked(true)
             .include_ignored(false)
             .include_unmodified(false);
 
-        let statuses = repo
+        let statuses = self
+            .git_repo
             .statuses(Some(&mut status_opts))
             .context("Failed to get git status")?;
 
@@ -303,8 +292,6 @@ impl Repo {
 
     /// Get all filtered files that have local modifications (are "dirty")
     pub fn dirty_filtered_files(&self) -> Result<Vec<PathBuf>> {
-        let repo = self.open()?;
-
         let mut status_opts = git2::StatusOptions::new();
         status_opts
             .include_untracked(false)
@@ -313,7 +300,8 @@ impl Repo {
             .renames_head_to_index(true)
             .renames_index_to_workdir(true);
 
-        let statuses = repo
+        let statuses = self
+            .git_repo
             .statuses(Some(&mut status_opts))
             .context("Failed to get git status")?;
 
@@ -459,15 +447,16 @@ impl Repo {
 
     /// Get the path to the key file in the .git directory
     fn key_file_path(&self) -> Result<PathBuf> {
-        let repo = self.open()?;
-        let git_dir = repo.path();
+        let git_dir = self.git_repo.path();
         Ok(git_dir.join(KEY_FILE_NAME))
     }
 
     /// Check if a file has the encryption filter attribute set
     fn has_encryption_filter(&self, rel_path: &Path) -> Result<bool> {
-        let repo = self.open()?;
-        match repo.get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX) {
+        match self
+            .git_repo
+            .get_attr(rel_path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX)
+        {
             Ok(Some(attr_value)) => Ok(attr_value == FILTER_NAME),
             Ok(None) => Ok(false),
             Err(_) => Ok(false),
@@ -489,13 +478,13 @@ impl Repo {
 /// by only checking files that are tracked by git (in the index).
 /// Untracked files are not included because they haven't been processed by git filters
 /// yet and aren't in the object database.
-pub struct IndexFilteredFilesIterator<'a> {
-    repo: &'a Repo,
+pub struct IndexFilteredFilesIterator {
+    repo: Repo,
     git_index: git2::Index,
     range: Range<usize>,
 }
 
-impl<'repo> Iterator for IndexFilteredFilesIterator<'repo> {
+impl Iterator for IndexFilteredFilesIterator {
     type Item = Result<PathBuf>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -599,7 +588,7 @@ mod tests {
 
         // Create Repo instance from the repository
         let repository = Repository::open(repo_path).context("Failed to open git repository")?;
-        let repo = Repo::from_repository(&repository)?;
+        let repo = Repo::from_repository(repository)?;
 
         Ok((temp_dir, repo))
     }
