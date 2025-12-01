@@ -259,8 +259,8 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
         }
 
         println!(
-            "\n⚠️  Note: If you created a new file on your disk that isn't tracked yet, \n\
-                  it won't be listed here until you at least `git add` it to the staging area."
+            "\n⚠️  Note: If you created new files on your disk that are not tracked yet, \n\
+                  they won't be listed here until you `git add` them to the staging area."
         );
     } else {
         // Check status for specific files

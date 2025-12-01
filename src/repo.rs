@@ -2,6 +2,7 @@ use crate::key;
 use anyhow::{Context, Result};
 use git2::Repository;
 use std::fs;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -263,14 +264,14 @@ impl Repo {
     /// yet and aren't in the object database.
     ///
     /// Uses git2's attribute checking to properly handle .gitattributes patterns.
-    pub fn find_filtered_files(&self) -> Result<IndexFilteredFilesIterator> {
+    pub fn find_filtered_files(&self) -> Result<IndexFilteredFilesIterator<'_>> {
         let git_repo = self.open()?;
         let index = git_repo.index().context("Failed to get git index")?;
-
+        let length = index.len();
         Ok(IndexFilteredFilesIterator {
-            repo: self.clone(),
-            index,
-            current_idx: 0,
+            repo: self,
+            git_index: index,
+            range: 0..length,
         })
     }
 
@@ -460,24 +461,20 @@ impl Repo {
 /// by only checking files that are tracked by git (in the index).
 /// Untracked files are not included because they haven't been processed by git filters
 /// yet and aren't in the object database.
-pub struct IndexFilteredFilesIterator {
-    repo: Repo,
-    index: git2::Index,
-    current_idx: usize,
+pub struct IndexFilteredFilesIterator<'a> {
+    repo: &'a Repo,
+    git_index: git2::Index,
+    range: Range<usize>,
 }
 
-impl Iterator for IndexFilteredFilesIterator {
+impl<'repo> Iterator for IndexFilteredFilesIterator<'repo> {
     type Item = Result<PathBuf>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Use index.iter() to iterate, but we need to track position manually
-        // since we can't store the iterator due to lifetime constraints
-        let entries = self.index.iter();
-        let mut iter = entries.skip(self.current_idx);
-
-        while let Some(entry) = iter.next() {
-            self.current_idx += 1;
-
+        // We can't store the index.iter() iterator due to lifetime constraints
+        // so we iterate manually by index.
+        for idx in self.range.by_ref() {
+            let entry = self.git_index.get(idx)?;
             let path_bytes = entry.path;
             let path_str = match std::str::from_utf8(&path_bytes) {
                 Ok(s) => s,
@@ -491,7 +488,6 @@ impl Iterator for IndexFilteredFilesIterator {
                 Err(e) => return Some(Err(e)),
             }
         }
-
         None
     }
 }
