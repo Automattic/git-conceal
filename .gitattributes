@@ -1,1 +1,4 @@
-*-secrets.txt filter=a8c-git-secrets diff=a8c-git-secrets
+# Example: encrypt all files matching the `*-secrets.txt` pattern
+#
+# *-secrets.txt filter=a8c-git-secrets diff=a8c-git-secrets
+#
