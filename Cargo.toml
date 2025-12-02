@@ -37,3 +37,4 @@ windows-permissions = "0.2.4"
 
 [dev-dependencies]
 tempfile = "^3"
+serial_test = "^3"

@@ -310,40 +310,68 @@ mod tests {
         assert_eq!(loaded_key.as_bytes(), key.as_bytes());
     }
 
+    /// This test must run serially (not in parallel with other tests) because it modifies
+    /// environment variables. Environment variable modification is not thread-safe and can
+    /// cause race conditions when tests run in parallel.
+    #[serial_test::serial]
     #[test]
+    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
     fn test_read_from_source_env() {
         let key = test_key();
         let b64 = key.to_base64();
 
         // Set environment variable
-        std::env::set_var("TEST_KEY_VAR", &b64);
+        // SAFETY: This test runs serially, so no race conditions with other tests
+        unsafe {
+            std::env::set_var("TEST_KEY_VAR", &b64);
+        }
 
         let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
         assert_eq!(loaded_key.as_bytes(), key.as_bytes());
 
         // Clean up
-        std::env::remove_var("TEST_KEY_VAR");
+        unsafe {
+            std::env::remove_var("TEST_KEY_VAR");
+        }
     }
 
+    /// This test must run serially (not in parallel with other tests) because it modifies
+    /// environment variables. Environment variable modification is not thread-safe and can
+    /// cause race conditions when tests run in parallel.
+    #[serial_test::serial]
     #[test]
+    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
     fn test_read_from_source_env_with_whitespace() {
         let key = test_key();
         let b64 = key.to_base64();
 
         // Set environment variable with whitespace
-        std::env::set_var("TEST_KEY_VAR", &format!("  {}  ", b64));
+        // SAFETY: This test runs serially, so no race conditions with other tests
+        unsafe {
+            std::env::set_var("TEST_KEY_VAR", &format!("  {}  ", b64));
+        }
 
         let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
         assert_eq!(loaded_key.as_bytes(), key.as_bytes());
 
         // Clean up
-        std::env::remove_var("TEST_KEY_VAR");
+        unsafe {
+            std::env::remove_var("TEST_KEY_VAR");
+        }
     }
 
+    /// This test must run serially (not in parallel with other tests) because it modifies
+    /// environment variables. Environment variable modification is not thread-safe and can
+    /// cause race conditions when tests run in parallel.
+    #[serial_test::serial]
     #[test]
+    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
     fn test_read_from_source_env_nonexistent() {
         // Make sure the variable doesn't exist
-        std::env::remove_var("NONEXISTENT_VAR");
+        // SAFETY: This test runs serially, so no race conditions with other tests
+        unsafe {
+            std::env::remove_var("NONEXISTENT_VAR");
+        }
 
         let result = Key::read_from_source("env:NONEXISTENT_VAR");
         assert!(result.is_err());
