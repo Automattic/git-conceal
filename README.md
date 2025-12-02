@@ -200,21 +200,7 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 ## Security Considerations
 
-- **Key Management**: The encryption key is stored in plaintext in `.git/git-conceal.key`. The file is automatically created with secure permissions (mode 0600 on Unix systems - read/write for owner only). On Unix systems, you can verify permissions with:
-  ```bash
-  ls -l .git/git-conceal.key
-  ```
-  If permissions are incorrect, fix them with:
-  ```bash
-  chmod 600 .git/git-conceal.key
-  ```
-  Protect your `.git` directory appropriately - it should not be accessible to other users on the system.
-
-- **Key Sharing**: Share keys securely with collaborators (e.g., via encrypted channels, password managers, etc.)
-
-- **File Patterns**: Make sure your `.gitattributes` patterns are correct before adding sensitive files, or they won't be encrypted!
-
-- **Backup Keys**: Always backup your encryption keys. If you lose the key, encrypted files cannot be recovered.
+For detailed security information, including key management, deterministic encryption implications, and security best practices, see [SECURITY.md](./SECURITY.md).
 
 ## Limitations
 
