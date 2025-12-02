@@ -11,6 +11,7 @@
 
 mod crypto;
 mod filter;
+mod fs_helpers;
 mod key;
 mod repo;
 
