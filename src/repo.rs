@@ -212,10 +212,12 @@ impl Repo {
 
         #[cfg(windows)]
         {
-            // On Windows, file permissions work differently through ACLs
-            // The file will have default permissions which are typically secure
-            // in a .git directory that's already protected
-            // Note: More sophisticated Windows ACL manipulation would require winapi crate
+            set_windows_file_permissions(&key_file).with_context(|| {
+                format!(
+                    "Failed to set Windows file permissions on key file: {}",
+                    key_file.display()
+                )
+            })?;
         }
 
         Ok(())
@@ -543,6 +545,40 @@ fn get_binary_path() -> Result<PathBuf> {
     };
 
     Ok(PathBuf::from(binary_name))
+}
+
+#[cfg(windows)]
+/// Set Windows file permissions to restrict access to the current user only
+///
+/// This function sets the file's ACL (Access Control List) to only allow
+/// read and write access to the current user, similar to Unix's 0o600 permissions.
+///
+/// # Errors
+/// Returns an error if Windows API calls fail or if the current user's SID cannot be retrieved.
+fn set_windows_file_permissions(file_path: &Path) -> Result<()> {
+    use windows_permissions::raw::{DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+    use windows_permissions::{Ace, AceType, Acl, SecurityDescriptor, Sid};
+
+    // Get current user's SID
+    let user_sid = Sid::current_user().context("Failed to get current user SID")?;
+
+    // Create an ACE that allows read, write, and delete for the current user
+    let access_mask = FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE;
+    let ace = Ace::new(AceType::AccessAllowed, access_mask, user_sid);
+
+    // Create an ACL and add the ACE
+    let mut acl = Acl::new();
+    acl.add_ace(ace).context("Failed to add ACE to ACL")?;
+
+    // Create a Security Descriptor with the ACL
+    let sd = SecurityDescriptor::new_with_dacl(acl, false)
+        .context("Failed to create security descriptor")?;
+
+    // Apply the Security Descriptor to the file
+    sd.apply_to_path(file_path)
+        .context("Failed to apply security descriptor to file")?;
+
+    Ok(())
 }
 
 // === Tests === //
@@ -953,5 +989,29 @@ mod tests {
         let filtered_files = filtered_files.unwrap();
         assert_eq!(filtered_files.len(), 1);
         assert!(filtered_files[0].to_string_lossy().contains("secrets"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_file_permissions() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test_key.key");
+
+        // Create a test file
+        fs::write(&test_file, b"test key data").unwrap();
+
+        // Set Windows permissions
+        set_windows_file_permissions(&test_file).unwrap();
+
+        // Verify the file still exists and is readable
+        assert!(test_file.exists());
+        let contents = fs::read(&test_file).unwrap();
+        assert_eq!(contents, b"test key data");
+
+        // Note: Actually verifying the ACL would require additional Windows API calls
+        // This test at least verifies the function doesn't crash and the file remains accessible
     }
 }
