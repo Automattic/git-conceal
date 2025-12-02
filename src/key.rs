@@ -9,6 +9,7 @@ use std::path::Path;
 ///
 /// This type wraps the raw key bytes and provides a safe API for key operations.
 /// The underlying representation is only exposed when needed for cryptographic operations.
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct Key {
     bytes: [u8; Self::KEY_SIZE],
