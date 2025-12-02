@@ -41,10 +41,13 @@ impl Key {
         general_purpose::STANDARD.encode(self.bytes)
     }
 
-    /// Import key from base64 string
+    /// Create a key from a base64-encoded string
+    ///
+    /// The input string is automatically trimmed of leading and trailing whitespace
+    /// to handle cases where base64 strings are copied with extra whitespace.
     pub fn from_base64(key_b64: &str) -> Result<Self> {
         let key_bytes = general_purpose::STANDARD
-            .decode(key_b64)
+            .decode(key_b64.trim())
             .context("Failed to decode base64 key")?;
         bytes_to_key(key_bytes).context("Invalid key size from base64")
     }
@@ -81,7 +84,7 @@ impl Key {
             let key_b64 = std::env::var(env_var).with_context(|| {
                 format!("Failed to read key from environment variable {}", env_var)
             })?;
-            Self::from_base64(key_b64.trim())
+            Self::from_base64(&key_b64)
         } else {
             // Read from file (raw binary format)
             Self::from_file(Path::new(key_source))
@@ -225,11 +228,13 @@ mod tests {
         let key = test_key();
         let b64 = key.to_base64();
 
-        // Test with leading/trailing whitespace (should be trimmed in read_from_source)
-        let decoded_key = Key::from_base64(&format!("  {}  ", b64));
-        // Note: from_base64 doesn't trim, but read_from_source does
-        // So this should fail, but read_from_source with env: should work
-        assert!(decoded_key.is_err());
+        // Test with leading/trailing whitespace (should be automatically trimmed)
+        let decoded_key = Key::from_base64(&format!("  {}  ", b64)).unwrap();
+        assert_eq!(decoded_key.as_bytes(), key.as_bytes());
+
+        // Test with newlines and tabs
+        let decoded_key2 = Key::from_base64(&format!("\n\t{}\n\t", b64)).unwrap();
+        assert_eq!(decoded_key2.as_bytes(), key.as_bytes());
     }
 
     #[test]
