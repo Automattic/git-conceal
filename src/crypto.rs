@@ -24,12 +24,15 @@ const ENCRYPTED_HEADER_SIZE: usize = MAGIC_HEADER_SIZE + 1 + IV_SIZE; // magic +
 const MIN_ENCRYPTED_SIZE: usize = ENCRYPTED_HEADER_SIZE + HMAC_SIZE; // minimum size with HMAC
 
 /// Generate random key bytes of the specified size
-pub fn generate_key_bytes(size: usize) -> Vec<u8> {
+///
+/// # Errors
+/// Returns an error if the OS random number generator fails to generate the requested bytes.
+pub fn generate_key_bytes(size: usize) -> Result<Vec<u8>> {
     let mut bytes = vec![0u8; size];
     rand::rngs::OsRng
         .try_fill_bytes(&mut bytes)
-        .expect("Failed to generate random key bytes from OS RNG");
-    bytes
+        .context("Failed to generate random key bytes from OS RNG")?;
+    Ok(bytes)
 }
 
 /// Check if data appears to be encrypted (has the magic header)
@@ -74,7 +77,7 @@ pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     result.extend_from_slice(&buffer);
 
     // Compute HMAC (authenticates the entire ciphertext including header)
-    let hmac_key = derive_hmac_key(key);
+    let hmac_key = derive_hmac_key(key)?;
     let mut mac =
         Hmac::<Sha256>::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     mac.update(&result); // HMAC covers: magic + version + IV + encrypted data
@@ -117,7 +120,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     let expected_hmac = &ciphertext[data_end..];
 
     // Verify HMAC before attempting decryption
-    let hmac_key = derive_hmac_key(key);
+    let hmac_key = derive_hmac_key(key)?;
     let mut mac =
         Hmac::<Sha256>::new_from_slice(&hmac_key).context("Failed to create HMAC instance")?;
     // HMAC covers: magic + version + IV + encrypted data (everything except the HMAC itself)
@@ -142,12 +145,17 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
 
 /// Derive HMAC key from encryption key using a KDF (Key Derivation Function)
 /// This provides proper key separation and follows cryptographic best practices.
-fn derive_hmac_key(encryption_key: &key::Key) -> [u8; key::Key::KEY_SIZE] {
+///
+/// # Errors
+/// Returns an error if HKDF expansion fails (should never happen with fixed output size,
+/// but handled for completeness).
+fn derive_hmac_key(encryption_key: &key::Key) -> Result<[u8; key::Key::KEY_SIZE]> {
     let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
     let mut hmac_key = [0u8; key::Key::KEY_SIZE];
     kdf.expand(b"git-conceal-hmac", &mut hmac_key)
-        .expect("HKDF expansion failed (output length mismatch)");
-    hmac_key
+        // `hkdf::InvalidLength` doesn't implement `std::error::Error` so we can't use `.context` and have to use `.map_err` instead
+        .map_err(|_| anyhow::anyhow!("HKDF expansion failed (output length mismatch)"))?;
+    Ok(hmac_key)
 }
 
 // === Tests === //
@@ -178,8 +186,8 @@ mod tests {
 
     #[test]
     fn test_generate_key_bytes() {
-        let key1_bytes = generate_key_bytes(key::Key::KEY_SIZE);
-        let key2_bytes = generate_key_bytes(key::Key::KEY_SIZE);
+        let key1_bytes = generate_key_bytes(key::Key::KEY_SIZE).unwrap();
+        let key2_bytes = generate_key_bytes(key::Key::KEY_SIZE).unwrap();
 
         // Keys should be the correct size
         assert_eq!(key1_bytes.len(), key::Key::KEY_SIZE);

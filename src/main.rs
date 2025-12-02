@@ -156,7 +156,7 @@ fn cmd_init() -> Result<()> {
     }
 
     // Generate a new key
-    let key = key::Key::generate();
+    let key = key::Key::generate().context("Failed to generate encryption key")?;
     repo.store_key(&key).context("Failed to store key file")?;
 
     // Set up git filters
@@ -327,7 +327,7 @@ fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
         anyhow::bail!("Key rotation cancelled.");
     }
 
-    let new_key = key::Key::generate();
+    let new_key = key::Key::generate().context("Failed to generate new encryption key")?;
     repo.store_key(&new_key)
         .context("Failed to store new key")?;
 

@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn test_store_and_load_key() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate();
+        let key = key::Key::generate().unwrap();
         repo.store_key(&key).unwrap();
         let loaded_key = repo.load_key().unwrap();
         assert_eq!(loaded_key.as_bytes(), key.as_bytes());
@@ -632,8 +632,8 @@ mod tests {
     #[test]
     fn test_store_key_overwrites() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key1 = key::Key::generate();
-        let key2 = key::Key::generate();
+        let key1 = key::Key::generate().unwrap();
+        let key2 = key::Key::generate().unwrap();
 
         repo.store_key(&key1).unwrap();
         assert_eq!(repo.load_key().unwrap().as_bytes(), key1.as_bytes());
@@ -649,7 +649,7 @@ mod tests {
         // Initially should be locked
         assert!(!repo.is_unlocked().unwrap());
 
-        let key = key::Key::generate();
+        let key = key::Key::generate().unwrap();
         repo.store_key(&key).unwrap();
 
         // Now should be unlocked
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn test_remove_key() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate();
+        let key = key::Key::generate().unwrap();
 
         // Store key
         repo.store_key(&key).unwrap();
@@ -918,7 +918,7 @@ mod tests {
     #[test]
     fn test_store_key_creates_file() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate();
+        let key = key::Key::generate().unwrap();
 
         repo.store_key(&key).unwrap();
 

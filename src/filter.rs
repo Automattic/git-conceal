@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_apply_smudge_filter_wrong_key_fails() {
         let key1 = test_key();
-        let key2 = key::Key::generate();
+        let key2 = key::Key::generate().unwrap();
         let plaintext = b"Secret data";
 
         let encrypted = crypto::encrypt(&key1, plaintext).unwrap();

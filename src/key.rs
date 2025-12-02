@@ -26,11 +26,14 @@ impl Key {
     }
 
     /// Generate a new random encryption key
-    pub fn generate() -> Self {
-        let bytes_vec = crate::crypto::generate_key_bytes(Self::KEY_SIZE);
+    ///
+    /// # Errors
+    /// Returns an error if the OS random number generator fails to generate the key bytes.
+    pub fn generate() -> Result<Self> {
+        let bytes_vec = crate::crypto::generate_key_bytes(Self::KEY_SIZE)?;
         let mut bytes = [0u8; Self::KEY_SIZE];
         bytes.copy_from_slice(&bytes_vec);
-        Self::from_bytes(bytes)
+        Ok(Self::from_bytes(bytes))
     }
 
     /// Export key as base64 string
@@ -152,8 +155,8 @@ mod tests {
 
     #[test]
     fn test_generate() {
-        let key1 = Key::generate();
-        let key2 = Key::generate();
+        let key1 = Key::generate().unwrap();
+        let key2 = Key::generate().unwrap();
 
         // Keys should be the correct size
         assert_eq!(key1.as_bytes().len(), Key::KEY_SIZE);
@@ -396,7 +399,7 @@ mod tests {
     fn test_multiple_generate_keys_unique() {
         let mut keys = Vec::new();
         for _ in 0..10 {
-            keys.push(Key::generate());
+            keys.push(Key::generate().unwrap());
         }
 
         // All keys should be unique
