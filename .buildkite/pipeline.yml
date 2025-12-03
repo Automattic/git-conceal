@@ -11,6 +11,8 @@ steps:
     command: |
       .buildkite/install_rust.sh
       .buildkite/lint.sh
+    notify:
+      - github_commit_status: { context: "Lint" }
 
   - group: "🔬 Test"
     steps:
@@ -21,6 +23,8 @@ steps:
         command: |
           .buildkite/install_rust.sh
           .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test macOS" }
 
       - label: "🔬 Test Linux"
         key: check-linux
@@ -29,6 +33,8 @@ steps:
         command: |
           .buildkite/install_rust.sh
           .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test Linux" }
 
       - label: "🔬 Test Windows"
         key: check-windows
@@ -36,6 +42,8 @@ steps:
           queue: windows
         command: |
           bash .buildkite/test.sh
+        notify:
+          - github_commit_status: { context: "Test Windows" }
 
   - group: "Build"
     if: build.branch == 'trunk' || build.tag != null
@@ -48,6 +56,8 @@ steps:
         command: |
           .buildkite/install_rust.sh
           .buildkite/build_and_upload_artifact.sh
+        notify:
+          - github_commit_status: { context: "Build macOS" }
 
       - label: "Build Linux"
         key: build-linux
@@ -57,6 +67,8 @@ steps:
         command: |
           .buildkite/install_rust.sh
           .buildkite/build_and_upload_artifact.sh
+        notify:
+          - github_commit_status: { context: "Build Linux" }
 
       - label: "Build Windows"
         key: build-windows
@@ -65,6 +77,8 @@ steps:
           queue: windows
         command: |
           bash .buildkite/build_and_upload_artifact.sh .exe
+        notify:
+          - github_commit_status: { context: "Build Windows" }
 
   - label: "Create GitHub Release"
     if: build.tag != null
