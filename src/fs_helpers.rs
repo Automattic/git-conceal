@@ -49,27 +49,43 @@ pub fn set_unix_file_permissions(file_path: &Path) -> Result<()> {
 /// Returns an error if Windows API calls fail or if the current user's SID cannot be retrieved.
 #[cfg(windows)]
 pub fn set_windows_file_permissions(file_path: &Path) -> Result<()> {
-    use windows_permissions::raw::{DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE};
-    use windows_permissions::{Ace, AceType, Acl, SecurityDescriptor, Sid};
+    use windows_permissions::constants::{SeObjectType, SecurityInformation};
+    use windows_permissions::utilities;
+    use windows_permissions::wrappers::SetNamedSecurityInfo;
+    use windows_permissions::{LocalBox, SecurityDescriptor};
 
     // Get current user's SID
-    let user_sid = Sid::current_user().context("Failed to get current user SID")?;
+    let user_sid = utilities::current_process_sid().context("Failed to get current user SID")?;
 
-    // Create an ACE that allows read, write, and delete for the current user
-    let access_mask = FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE;
-    let ace = Ace::new(AceType::AccessAllowed, access_mask, user_sid);
+    // Create SDDL (Security Descriptor Definition Language) string:
+    //  - "D:P" = DACL, Protected (no inheritance from parent)
+    //  - "(A;;FA;;;SID)" = Allow entry with Full Access for this SID
+    let sddl = format!("D:P(A;;FA;;;{})", user_sid.to_string());
 
-    // Create an ACL and add the ACE
-    let mut acl = Acl::new();
-    acl.add_ace(ace).context("Failed to add ACE to ACL")?;
+    // Parse SDDL to create SecurityDescriptor
+    let sd: LocalBox<SecurityDescriptor> = sddl.parse().context("Failed to parse SDDL string")?;
+    // Extract the DACL (Discretionary Access Control List) from it
+    let dacl = sd
+        .dacl()
+        .context("Failed to get DACL from security descriptor")?;
 
-    // Create a Security Descriptor with the ACL
-    let sd = SecurityDescriptor::new_with_dacl(acl, false)
-        .context("Failed to create security descriptor")?;
+    // Combine flags: set both DACL and ProtectedDacl
+    // ProtectedDacl prevents inheritance from parent directories, which is crucial
+    // for security-sensitive files like encryption keys
+    let sec_info = SecurityInformation::Dacl | SecurityInformation::ProtectedDacl;
 
-    // Apply the Security Descriptor to the file
-    sd.apply_to_path(file_path)
-        .context("Failed to apply security descriptor to file")?;
+    // Apply the DACL to the file
+    // This restricts access to only the current user (equivalent to Unix 0o600)
+    SetNamedSecurityInfo(
+        file_path,
+        SeObjectType::SE_FILE_OBJECT,
+        sec_info,
+        None,       // owner (don't change)
+        None,       // group (don't change)
+        Some(dacl), // DACL (our restricted permissions)
+        None,       // SACL (don't change)
+    )
+    .context("Failed to apply security descriptor to file")?;
 
     Ok(())
 }
