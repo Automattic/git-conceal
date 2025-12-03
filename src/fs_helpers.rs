@@ -116,7 +116,9 @@ pub fn set_secure_file_permissions(file_path: &Path) -> Result<()> {
 ///
 /// # Strategy
 /// 1. First tries to use `std::env::current_exe()` and canonicalize it
-/// 2. Falls back to using just the binary name (git will look in PATH)
+/// 2. On Windows, strips the `\\?\` prefix if present (extended-length path format)
+///    which doesn't work well in git config
+/// 3. Falls back to using just the binary name (git will look in PATH)
 ///
 /// # Errors
 /// Returns an error if path resolution fails (though fallback should always work).
@@ -127,6 +129,18 @@ pub fn get_binary_path() -> Result<PathBuf> {
         if exe_path.exists() {
             // Try to canonicalize to get absolute path
             if let Ok(canonical) = exe_path.canonicalize() {
+                // On Windows, canonicalize() returns extended-length paths (\\?\C:\...)
+                // which don't work well in git config. Strip the prefix if present.
+                #[cfg(windows)]
+                {
+                    let path_str = canonical.to_string_lossy();
+                    if path_str.starts_with(r"\\?\") {
+                        // Remove the \\?\ prefix
+                        let normalized = path_str.strip_prefix(r"\\?\").unwrap();
+                        return Ok(PathBuf::from(normalized));
+                    }
+                }
+                
                 return Ok(canonical);
             }
             // If canonicalize fails, use the path as-is if it's absolute
