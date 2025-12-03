@@ -50,7 +50,13 @@ enum Commands {
                       and decrypts any encrypted files in the working directory."
     )]
     Unlock {
-        /// Key source: '-' for stdin, 'env:VARNAME' for environment variable, or file path
+        /// Key source
+        #[arg(
+            value_name = "KEY_SOURCE",
+            long_help = "- 'env:VARNAME': base64-encoded key in environment variable\n\
+                         - '-': raw binary key from stdin\n\
+                         - <PATH>: raw binary key from file"
+        )]
         key_source: String,
     },
     // Lock
