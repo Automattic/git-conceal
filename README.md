@@ -25,12 +25,40 @@ You can learn more about technical details of how git filter works in [this arti
 
 ## Installation
 
-### Download from GitHub Release
+### Install Script (Recommended)
 
-1. Download the pre-build binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest).
-1. Rename it `git-conceal` (or `git-conceal.exe` on Windows) and save it in a directory in your `$PATH` (e.g. `/usr/local/bin`)
-1. On macOS/Linux, ensure to make it executable (`chmod +x git-conceal`)
-1. On macOS, you might need to remove the quarantine attribute too before you can run it: `xattr -d com.apple.quarantine git-conceal`
+The easiest way to install `git-conceal` is using the install script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Automattic/git-conceal/trunk/install.sh | bash
+```
+
+This will automatically:
+- Detect your platform and architecture
+- Download the appropriate binary from the latest GitHub release
+- Install it to the appropriate location (`/usr/local/bin` on Unix systems if writable, otherwise `~/.local/bin`)
+
+To install to a custom directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Automattic/git-conceal/trunk/install.sh | bash -s -- --prefix /custom/path
+```
+
+Or download and run the script manually:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Automattic/git-conceal/trunk/install.sh -o install.sh
+bash install.sh [--prefix /custom/path]
+```
+
+### Manual Download from GitHub Release
+
+Alternatively, you can manually download the pre-built binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest):
+
+1. Download the binary for your platform
+2. Rename it `git-conceal` (or `git-conceal.exe` on Windows) and save it in a directory in your `$PATH` (e.g. `/usr/local/bin`)
+3. On macOS/Linux, ensure to make it executable (`chmod +x git-conceal`)
+4. On macOS, you might need to remove the quarantine attribute too before you can run it: `xattr -d com.apple.quarantine git-conceal`
 
 ### Build from Source
 
