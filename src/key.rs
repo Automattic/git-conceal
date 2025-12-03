@@ -26,6 +26,22 @@ impl Key {
         Self { bytes }
     }
 
+    /// Get a reference to the underlying key bytes
+    ///
+    /// This is primarily used for cryptographic operations that need direct access
+    /// to the raw key material.
+    pub fn as_bytes(&self) -> &[u8; Self::KEY_SIZE] {
+        &self.bytes
+    }
+
+    /// Read encryption key from a file (raw binary format, 32 bytes)
+    pub fn from_file(file_path: &Path) -> Result<Self> {
+        let key_bytes = fs::read(file_path)
+            .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
+        bytes_to_key(key_bytes)
+            .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
+    }
+
     /// Generate a new random encryption key
     ///
     /// # Errors
@@ -35,11 +51,6 @@ impl Key {
         let mut bytes = [0u8; Self::KEY_SIZE];
         bytes.copy_from_slice(&bytes_vec);
         Ok(Self::from_bytes(bytes))
-    }
-
-    /// Export key as base64 string
-    pub fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self.bytes)
     }
 
     /// Create a key from a base64-encoded string
@@ -53,12 +64,9 @@ impl Key {
         bytes_to_key(key_bytes).context("Invalid key size from base64")
     }
 
-    /// Read encryption key from a file (raw binary format, 32 bytes)
-    pub fn from_file(file_path: &Path) -> Result<Self> {
-        let key_bytes = fs::read(file_path)
-            .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
-        bytes_to_key(key_bytes)
-            .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
+    /// Export key as base64 string
+    pub fn to_base64(&self) -> String {
+        general_purpose::STANDARD.encode(self.bytes)
     }
 
     /// Read encryption key from various sources
@@ -90,14 +98,6 @@ impl Key {
             // Read from file (raw binary format)
             Self::from_file(Path::new(key_source))
         }
-    }
-
-    /// Get a reference to the underlying key bytes
-    ///
-    /// This is primarily used for cryptographic operations that need direct access
-    /// to the raw key material.
-    pub fn as_bytes(&self) -> &[u8; Self::KEY_SIZE] {
-        &self.bytes
     }
 }
 

@@ -129,24 +129,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Check if filters are already configured
-    pub fn filters_configured(&self) -> Result<bool> {
-        let config = self.git_repo.config().context("Failed to get git config")?;
-        match config.get_string(&format!("filter.{}.clean", FILTER_NAME)) {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                if e.code() == git2::ErrorCode::NotFound {
-                    Ok(false)
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to check if filters are configured: {}",
-                        e
-                    ))
-                }
-            }
-        }
-    }
-
     /// Remove git filters configuration
     pub fn remove_filters(&self) -> Result<()> {
         let mut config = self.git_repo.config().context("Failed to get git config")?;
@@ -176,6 +158,24 @@ impl Repo {
         }
 
         Ok(())
+    }
+
+    /// Check if filters are already configured
+    pub fn filters_configured(&self) -> Result<bool> {
+        let config = self.git_repo.config().context("Failed to get git config")?;
+        match config.get_string(&format!("filter.{}.clean", FILTER_NAME)) {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                if e.code() == git2::ErrorCode::NotFound {
+                    Ok(false)
+                } else {
+                    Err(anyhow::anyhow!(
+                        "Failed to check if filters are configured: {}",
+                        e
+                    ))
+                }
+            }
+        }
     }
 
     /// Load the encryption key from the key file in .git directory
@@ -433,12 +433,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Get the path to the key file in the .git directory
-    fn key_file_path(&self) -> Result<PathBuf> {
-        let git_dir = self.git_repo.path();
-        Ok(git_dir.join(KEY_FILE_NAME))
-    }
-
     /// Check if a file has the encryption filter attribute set
     fn has_encryption_filter(&self, rel_path: &Path) -> Result<bool> {
         match self
@@ -449,6 +443,12 @@ impl Repo {
             Ok(None) => Ok(false),
             Err(_) => Ok(false),
         }
+    }
+
+    /// Get the path to the key file in the .git directory
+    fn key_file_path(&self) -> Result<PathBuf> {
+        let git_dir = self.git_repo.path();
+        Ok(git_dir.join(KEY_FILE_NAME))
     }
 
     /// Get relative path from repository working directory root
