@@ -210,7 +210,15 @@ For detailed security information, including key management, deterministic encry
 
 ## New Releases
 
-Releases are automated by our CI every time we make a `git tag` on the repo.
+Releases are automated by our CI every time we make a `git tag` on the repo. Be sure to update the version in the `Cargo.toml` first though.
+
+ - Create a `release/x.y.z` branch
+ - Edit `Cargo.toml` to update the `version = "x.y.z"` field
+ - Run `cargo check` to update the `Cargo.lock` and validate the code still compiles
+ - `git add Cargo.toml Cargo.lock` then `git commit -m "Bump version to x.y.z"`
+ - Create a PR and get it merged
+ - Once it has landed in `trunk`, push a new tag (`git tag "x.y.z"` then `git push origin "x.y.z"`)
+ - Then let the CI build the release binaries for all platforms, create the GitHub Release, and attach the compiled binaries as assets.
 
 ## License
 
