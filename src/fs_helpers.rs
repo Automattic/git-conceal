@@ -140,7 +140,7 @@ pub fn get_binary_path() -> Result<PathBuf> {
                         return Ok(PathBuf::from(normalized));
                     }
                 }
-                
+
                 return Ok(canonical);
             }
             // If canonicalize fails, use the path as-is if it's absolute

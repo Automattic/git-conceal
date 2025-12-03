@@ -88,13 +88,20 @@ impl Repo {
 
         let binary_path =
             fs_helpers::get_binary_path().context("Failed to determine binary path")?;
-        let binary_str = binary_path.to_string_lossy();
+        let binary_str = binary_path.to_str().with_context(|| {
+            format!(
+                "Binary path contains invalid UTF-8: {}",
+                binary_path.display()
+            )
+        })?;
 
         // Configure clean filter (encrypt on commit)
+        // Always quote the binary path to handle spaces and special characters safely
+        // This is especially important on Windows where paths with backslashes need quoting
         config
             .set_str(
                 &format!("filter.{}.clean", FILTER_NAME),
-                &format!("{} filter clean", binary_str),
+                &format!("\"{}\" filter clean", binary_str),
             )
             .context("Failed to set clean filter")?;
 
@@ -102,22 +109,22 @@ impl Repo {
         config
             .set_str(
                 &format!("filter.{}.smudge", FILTER_NAME),
-                &format!("{} filter smudge", binary_str),
+                &format!("\"{}\" filter smudge", binary_str),
             )
             .context("Failed to set smudge filter")?;
-
-        // Configure diff filter (decrypt for diff)
-        config
-            .set_str(
-                &format!("diff.{}.textconv", DIFF_NAME),
-                &format!("{} filter textconv", binary_str),
-            )
-            .context("Failed to set diff filter")?;
 
         // Configure filter to be required
         config
             .set_str(&format!("filter.{}.required", FILTER_NAME), "true")
             .context("Failed to set filter required")?;
+
+        // Configure diff filter (decrypt for diff)
+        config
+            .set_str(
+                &format!("diff.{}.textconv", DIFF_NAME),
+                &format!("\"{}\" filter textconv", binary_str),
+            )
+            .context("Failed to set diff filter")?;
 
         Ok(())
     }
