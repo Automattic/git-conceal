@@ -1,12 +1,12 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-//! Transparent file encryption in git using symmetric keys
+//! Transparent file encryption in Git using symmetric keys
 //!
-//! This tool provides transparent encryption and decryption of files in git repositories,
+//! This tool provides transparent encryption and decryption of files in Git repositories,
 //! similar to git-crypt but using only symmetric keys (no GPG support).
 //!
-//! Files are automatically encrypted on commit and decrypted on checkout using git's
+//! Files are automatically encrypted on commit and decrypted on checkout using Git's
 //! clean/smudge filter mechanism.
 
 mod crypto;
@@ -25,7 +25,7 @@ pub const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
 
 #[derive(Parser)]
 #[command(name = BINARY_NAME)]
-#[command(about = "Transparent file encryption in git using symmetric keys")]
+#[command(about = "Transparent file encryption in Git using symmetric keys")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]

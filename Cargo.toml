@@ -2,7 +2,7 @@
 name = "git-conceal"
 version = "1.0.0"
 authors = ["Automattic <mobile@automattic.com>"]
-description = "Transparent file encryption in git using symmetric keys"
+description = "Transparent file encryption in Git using symmetric keys"
 license = "MPL-2.0"
 rust-version = "1.70"
 edition = "2021"
