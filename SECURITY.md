@@ -1,10 +1,10 @@
-# Security Documentation
+# Security documentation
 
 This document provides detailed information about the security model, considerations, and implications of using `git-conceal`.
 
-## Security Considerations
+## Security considerations
 
-### How Keys are stored
+### How keys are stored
 
 The encryption key is stored in plaintext in `.git/git-conceal.key`.
 Like other files in `.git/` subfolders, this file is not part of your working copy files so not at risk of being pushed to the remote repository.
@@ -24,16 +24,16 @@ If permissions are incorrect, fix them with:
 chmod 600 .git/git-conceal.key
 ```
 
-### Sharing your Keys
+### Sharing your keys
 
 Share keys securely with collaborators (e.g., via encrypted channels, password managers, etc.).
 Never commit the key file to the repository.
 
-### Backup your Keys
+### Backup your keys
 
 Always backup your encryption keys. If you lose the key, encrypted files cannot be recovered.
 
-### File Patterns
+### File patterns
 
 Make sure your `.gitattributes` patterns are correct before adding sensitive files, and that you didn't make any typo in the name of your `filter=git-conceal` attribute, or those files won't be encrypted!
 
@@ -46,13 +46,13 @@ git-conceal status <filename>
 
 If you accidentally `git add`-ed a secret file before having the right filter for it in `.gitattributes`, you can `git restore --staged <file>` and `git add <file>` it again afterwards, or use `git add --renormalize <file>`.
 
-## Deterministic Encryption: Security Implications
+## Deterministic encryption: security implications
 
 `git-conceal` uses **deterministic encryption** (same plaintext → same ciphertext) which is necessary for git's content-addressable storage to work efficiently.
 
 This design choice has some small security implications that is worth being aware of, even though that shouldn't cause any concerns in the context in which `git-conceal` is used in practice.
 
-### What Attackers Can Learn
+### What attackers can learn
 
 1. **Content equality detection**: An attacker who can observe the encrypted files in the repository can determine if two files have identical content, or if a file's content hasn't changed between commits, even without the encryption key.
 
@@ -60,7 +60,7 @@ This design choice has some small security implications that is worth being awar
 
 3. **File relationships**: By comparing encrypted file contents across commits, an attacker can detect when files are copied, moved, or when their content is synchronized.
 
-### What Remains Protected
+### What remains protected
 
 - **Actual file contents**: The actual file contents remain protected as long as the encryption key is kept secret. Without the key, attackers cannot decrypt the files.
 
@@ -68,7 +68,7 @@ This design choice has some small security implications that is worth being awar
 
 - **Key verification**: The HMAC also serves as a key verification mechanism - if you use the wrong key, decryption will fail with an authentication error rather than producing garbage output.
 
-### When This Design Is Acceptable
+### When this design is acceptable
 
 For secrets stored in git repositories, the primary threat is typically:
 
@@ -78,7 +78,7 @@ For secrets stored in git repositories, the primary threat is typically:
 
 In these scenarios, deterministic encryption still protects the actual secret values. The ability to detect unchanged files is essential for git's efficiency and is a necessary trade-off for transparent encryption in version control systems.
 
-### When This May Not Be Sufficient
+### When this may not be sufficient
 
 Consider alternative approaches if you need:
 
@@ -88,7 +88,7 @@ Consider alternative approaches if you need:
 
 - **Protection against active attackers**: If you're protecting against attackers who can observe your repository in real-time and correlate changes with external events, deterministic encryption may leak timing information.
 
-### Technical Details
+### Technical details
 
 The encryption uses:
 - **Algorithm**: AES-256-CTR (Counter Mode) is used for the encryption of the data.
