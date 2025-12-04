@@ -46,7 +46,7 @@ git-conceal status <filename>
 
 If you accidentally `git add`-ed a secret file before having the right filter for it in `.gitattributes`, you can `git restore --staged <file>` and `git add <file>` it again afterwards, or use `git add --renormalize <file>`.
 
-## Deterministic encryption: security implications
+## Deterministic encryption: Security implications
 
 `git-conceal` uses **deterministic encryption** (same plaintext → same ciphertext) which is necessary for git's content-addressable storage to work efficiently.
 

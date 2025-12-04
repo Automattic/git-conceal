@@ -25,7 +25,7 @@ You can learn more about technical details of how git filter works in [this arti
 
 ## Installation
 
-### Install script (recommended)
+### Install script (Recommended)
 
 The easiest way to install `git-conceal` is using the install script:
 
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/Automattic/git-conceal/trunk/instal
 bash install.sh [--prefix /custom/path]
 ```
 
-### Manual download from GitHub release
+### Manual download from GitHub Releases
 
 Alternatively, you can manually download the pre-built binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest):
 
