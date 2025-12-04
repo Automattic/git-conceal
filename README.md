@@ -6,7 +6,7 @@
 Its goal is to allow you to store some secret files as encrypted in an otherwise public repo.</td>
 </tr></table>
 
-Inspired by [git-crypt](https://github.com/AGWA/git-crypt). Written in Rust fore first-class **cross-platform support**.
+Inspired by [git-crypt](https://github.com/AGWA/git-crypt). Written in Rust for its first-class **cross-platform support**.
 
 ## Features
 
