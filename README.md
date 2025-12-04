@@ -137,7 +137,7 @@ This will show the raw content as stored in the repository. So even if `cat my-s
 
 ### Unlock a Repository
 
-After you freshly clone a repository which contains files which has been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
+After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
 
 ```bash
 # Option 1: Provide the key via an environment variable (base64 encoded)
