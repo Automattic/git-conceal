@@ -48,7 +48,7 @@ If you accidentally `git add`-ed a secret file before having the right filter fo
 
 ## Deterministic Encryption: Security Implications
 
-`git-conceal` uses **deterministic encryption** (same plaintext → same ciphertext) which is necessary for git's content-addressable storage to work efficiently.
+`git-conceal` uses **deterministic encryption** (same plaintext → same ciphertext) which is necessary for Git's content-addressable storage to work efficiently.
 
 This design choice has some small security implications that is worth being aware of, even though that shouldn't cause any concerns in the context in which `git-conceal` is used in practice.
 
@@ -70,13 +70,13 @@ This design choice has some small security implications that is worth being awar
 
 ### When This Design Is Acceptable
 
-For secrets stored in git repositories, the primary threat is typically:
+For secrets stored in Git repositories, the primary threat is typically:
 
-- Unauthorized access to the repository (e.g., compromised git hosting service)
+- Unauthorized access to the repository (e.g., compromised Git hosting service)
 - Leaked repository backups
 - Accidental public repository exposure
 
-In these scenarios, deterministic encryption still protects the actual secret values. The ability to detect unchanged files is essential for git's efficiency and is a necessary trade-off for transparent encryption in version control systems.
+In these scenarios, deterministic encryption still protects the actual secret values. The ability to detect unchanged files is essential for Git's efficiency and is a necessary trade-off for transparent encryption in version control systems.
 
 ### When This May Not Be Sufficient
 
@@ -84,7 +84,7 @@ Consider alternative approaches if you need:
 
 - **Hide file equality**: If you need to hide the fact that two files contain the same secret, consider using different keys or additional obfuscation techniques.
 
-- **Hide update patterns**: If you need to hide update patterns (e.g., to prevent attackers from knowing which secrets are actively maintained), consider using a different encryption scheme. Note that this would break git's content deduplication and significantly impact repository size.
+- **Hide update patterns**: If you need to hide update patterns (e.g., to prevent attackers from knowing which secrets are actively maintained), consider using a different encryption scheme. Note that this would break Git's content deduplication and significantly impact repository size.
 
 - **Protection against active attackers**: If you're protecting against attackers who can observe your repository in real-time and correlate changes with external events, deterministic encryption may leak timing information.
 
@@ -97,7 +97,7 @@ The encryption uses:
 - **Key derivation**: HMAC key is derived from the encryption key using HKDF-SHA256, for proper key separation.
 
 This ensures that:
-- The same plaintext always produces the same ciphertext (required for git)
+- The same plaintext always produces the same ciphertext (required for Git)
 - The encryption key and HMAC key are cryptographically separated
 - Any modification to the encrypted data is detected
 - Using the wrong key results in authentication failure, not garbage output
