@@ -101,4 +101,3 @@ This ensures that:
 - The encryption key and HMAC key are cryptographically separated
 - Any modification to the encrypted data is detected
 - Using the wrong key results in authentication failure, not garbage output
-
