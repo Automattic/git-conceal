@@ -50,7 +50,7 @@ If you accidentally `git add`-ed a secret file before having the right filter fo
 
 `git-conceal` uses **deterministic encryption** (same plaintext → same ciphertext) which is necessary for Git's content-addressable storage to work efficiently.
 
-This design choice has some small security implications that is worth being aware of, even though that shouldn't cause any concerns in the context in which `git-conceal` is used in practice.
+This design choice has security implications worth being aware of, even though that shouldn't cause any concerns in the context in which `git-conceal` is used in practice.
 
 ### What Attackers Can Learn
 
