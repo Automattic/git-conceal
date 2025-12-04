@@ -112,9 +112,10 @@ private/** filter=git-conceal diff=git-conceal
 ```
 
 > [!IMPORTANT]
-> Make sure `.gitattributes` itself is NOT encrypted! If needed, you can explicitly exclude it:
+> Make sure `.gitattributes` itself is NOT encrypted! If needed, you can explicitly exclude it adding this line to it:
 
 ```
+# Exclude .gitattributes itself from encryption
 .gitattributes !filter !diff
 ```
 
