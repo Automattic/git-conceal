@@ -39,7 +39,7 @@ enum Commands {
         about = "Initialize a repository for encryption",
         long_about = const_format::formatcp!("Use this command to set up a repository to start using {}. \n\
                       It generates an encryption key, sets up git filters locally for the repository, \
-                      and provides instructions to save the key and how to start adding files to be encrypted.", BINARY_NAME)
+                      and provides instructions to save the key and start adding files to be encrypted.", BINARY_NAME)
     )]
     Init,
     // Unlock
