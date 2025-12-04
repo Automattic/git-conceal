@@ -118,7 +118,7 @@ private/** filter=git-conceal diff=git-conceal
 .gitattributes !filter !diff
 ```
 
-### Add new files
+### Add new encrypted files
 
 At that point, when you will `git add` a file to that repo that matches one of the `filter=git-conceal` pattern, that file's blob/content will be encrypted on the fly by Git.
 
@@ -168,8 +168,8 @@ git-conceal lock --force # to ignore local changes if any
 ```
 
 > [!TIP]
-> This can be useful in the rare case where you need to switch between branches that contain secret files that were encrypted with different keys (see "key rotation" below), to avoid errors during the Git operations while Git processes files from branch A that were encrypted with keyA and tries to decrypt them with the keyB that was used back in branch B.
-> This is pretty rare to rotate keys though, so should be very uncommon to have to lock a repository in your everyday workflow.
+> This can be useful in the rare case where you need to switch between branches that contain secret files that were encrypted with different keys (see "Rotate the encryption key" below), to avoid errors during the Git operations while Git processes files from branch A that were encrypted with keyA and tries to decrypt them with the keyB that was used back in branch B.
+> It should be pretty rare to rotate keys though, so it should be very uncommon to have to lock a repository in your everyday workflow.
 
 ### Check Files Status
 
