@@ -46,7 +46,7 @@ enum Commands {
     #[command(
         about = "Unlock an encrypted repository and decrypt existing files",
         long_about = "Use this command to unlock a repository that already contains encrypted files. \n\
-                      It sets up git filters, saves the key you provide in a key file, \
+                      It sets up Git filters, saves the key you provide in a key file, \
                       and decrypts any encrypted files in the working directory."
     )]
     Unlock {
@@ -62,7 +62,7 @@ enum Commands {
     // Lock
     #[command(
         about = "Lock a decrypted repository and restore files to their encrypted state",
-        long_about = "Use this command to remove the encryption key file and git filters from the local repository \
+        long_about = "Use this command to remove the encryption key file and Git filters from the local repository \
                       of an unlocked repository, and to restore files to their encrypted state."
     )]
     Lock {
@@ -123,11 +123,11 @@ enum KeyCommands {
 
 #[derive(Subcommand)]
 enum FilterCommands {
-    /// Clean filter: encrypt data (used by git on commit)
+    /// Clean filter: encrypt data (used by Git on commit)
     Clean,
-    /// Smudge filter: decrypt data (used by git on checkout)
+    /// Smudge filter: decrypt data (used by Git on checkout)
     Smudge,
-    /// Textconv: decrypt file for git diff (takes filename as argument)
+    /// Textconv: decrypt file for Git diff (takes filename as argument)
     Textconv {
         /// Filename to decrypt and show in diff
         #[arg(value_name = "FILE")]
@@ -166,9 +166,9 @@ fn cmd_init() -> Result<()> {
     let key = key::Key::generate().context("Failed to generate encryption key")?;
     repo.store_key(&key).context("Failed to store key file")?;
 
-    // Set up git filters
+    // Set up Git filters
     repo.setup_filters()
-        .context("Failed to set up git filters")?;
+        .context("Failed to set up Git filters")?;
 
     let key_b64 = key.to_base64();
     let instructions = init_instructions(&key_b64);
@@ -196,9 +196,9 @@ fn cmd_unlock(key_source: String) -> Result<()> {
     // Store key in key file
     repo.store_key(&key).context("Failed to store key file")?;
 
-    // Set up git filters
+    // Set up Git filters
     repo.setup_filters()
-        .context("Failed to set up git filters")?;
+        .context("Failed to set up Git filters")?;
 
     // Force re-checkout of filtered files to trigger smudge filter (decrypt them)
     repo.force_recheckout(repo.find_filtered_files()?)
@@ -224,9 +224,9 @@ fn cmd_lock(force: bool) -> Result<()> {
         }
     }
 
-    // Remove git filter configuration first (so git won't try to decrypt on checkout)
+    // Remove Git filter configuration first (so Git won't try to decrypt on checkout)
     repo.remove_filters()
-        .context("Failed to remove git filters")?;
+        .context("Failed to remove Git filters")?;
 
     // Remove the encryption key file
     repo.remove_key().context("Failed to remove key file")?;
@@ -257,7 +257,7 @@ fn cmd_status(files: Vec<String>) -> Result<()> {
             if filters_configured { "yes" } else { "no" }
         );
 
-        println!("\nTracked files configured for encryption by git filter:");
+        println!("\nTracked files configured for encryption by Git filter:");
         let mut has_files = false;
         for file_result in repo.find_filtered_files()? {
             let file = file_result?;
@@ -431,7 +431,7 @@ fn rotate_confirmation_prompt() -> String {
         change, unless you share the new key with them.
 
         Note that anyone who has the old key will still be able to decrypt the old
-        content of the secret files committed before this rotation in the git history.
+        content of the secret files committed before this rotation in the Git history.
         For this reason, especially if you are rotating the encryption key because
         of a leak or of someone leaving the team, it is recommended to _also_ rotate
         the actual secrets contained in those files.
@@ -452,7 +452,7 @@ fn rotate_instructions(key_b64: &str) -> String {
 
             Next steps:
               1. Consider also rotating the actual secrets contained in the secret files
-                 (as the old key can still decrypt the old content from git history),
+                 (as the old key can still decrypt the old content from Git history),
                  and update the content of those files with the new secrets.
 
               2. Commit the re-keyed secret files:
