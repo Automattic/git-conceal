@@ -200,7 +200,10 @@ git-conceal key show
 
 ### Rotate the encryption key
 
-If your symmetric encryption key has leaked somehow, or if one of your coworkers leaves your team/company and you want to rotate your secrets to ensure they can't access your new secrets anymore even if they had the key at some point, there's an easy way to rotate the encryption key used by an encrypted repo:
+There are times when you might need to rotate the encryption key used in an encrypted repository.
+For example, in the unfortunate even of the key leaking or when a coworker leaves your team/company and you want to ensure they can't access new secrets.
+
+You can rotate the encryption key with:
 
 ```bash
 git-conceal key rotate
