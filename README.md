@@ -25,7 +25,7 @@ You can learn more about technical details of how Git filter works in [this arti
 
 ## Installation
 
-### Install Script (Recommended)
+### Install script (Recommended)
 
 The easiest way to install `git-conceal` is using the install script:
 
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/Automattic/git-conceal/trunk/instal
 bash install.sh [--prefix /custom/path]
 ```
 
-### Manual Download from GitHub Release
+### Manual download from GitHub Releases
 
 Alternatively, you can manually download the pre-built binary suitable for your platform (Linux, macOS, Windows) from [the latest GitHub release](https://github.com/Automattic/git-conceal/releases/latest):
 
@@ -60,7 +60,7 @@ Alternatively, you can manually download the pre-built binary suitable for your 
 3. On macOS/Linux, ensure to make it executable (`chmod +x git-conceal`)
 4. On macOS, you might need to remove the quarantine attribute too before you can run it: `xattr -d com.apple.quarantine git-conceal`
 
-### Build from Source
+### Build from source
 
 ```bash
 git clone https://github.com/Automattic/git-conceal
@@ -72,7 +72,7 @@ The binary will be at `target/release/git-conceal` (or `target/release/git-conce
 
 ## Usage
 
-### Initialize a Repository
+### Initialize a repository
 
 To set up encryption for a Git repository that doesn't use this tool yet:
 
@@ -92,7 +92,7 @@ You will only have to do this once.
 > [!IMPORTANT]
 > Save the displayed key securely! You'll need it to unlock the repository on other machines or share it with collaborators.
 
-### Configure Files to Encrypt
+### Configure files to encrypt
 
 Create or edit `.gitattributes` in your repository root to specify which files should be encrypted by adding the `filter=git-conceal` attribute to them, for example:
 
@@ -136,7 +136,7 @@ To give you peace of mind and validate that files you added to your repo are pro
 You can also check what the blob content of the corresponding object looks like in the repository database by using `git show :<file>` (or `git show HEAD:<file>` if it's commited into `HEAD` already).
 This will show the raw content as stored in the repository. So even if `cat my-secret-file.txt` will show you the clear text locally (assuming you have unlocked your working copy with the right key), `git show :my-secret-file.txt` will show you the raw, encrypted binary data stored in the repository (assuming that file matches a `.gitattributes` pattern with `filter=git-conceal` set)
 
-### Unlock a Repository
+### Unlock a repository
 
 After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
 
@@ -159,7 +159,7 @@ This will:
 - Set up Git filters in the Git config of this working copy (if not already configured)
 - Decrypt all encrypted files in the working directory
 
-### Lock a Repository
+### Lock a repository
 
 To remove the encryption key file from the local working copy and restore the content of the local files to their encrypted content, you can "lock" your working copy:
 
@@ -172,7 +172,7 @@ git-conceal lock --force # to ignore local changes if any
 > This can be useful in the rare case where you need to switch between branches that contain secret files that were encrypted with different keys (see "Rotate the encryption key" below), to avoid errors during the Git operations while Git processes files from branch A that were encrypted with keyA and tries to decrypt them with the keyB that was used back in branch B.
 > It should be pretty rare to rotate keys though, so it should be very uncommon to have to lock a repository in your everyday workflow.
 
-### Check Files Status
+### Check files status
 
 To see the current encryption status:
 
@@ -220,7 +220,7 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 ---
 
-## How It Works
+## How it works
 
 1. **Encryption**: When you commit a file marked for encryption, Git's "clean" filter encrypts it using AES-256-CTR before storing it in the repository.
 
@@ -230,7 +230,7 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 4. **Key Storage**: The encryption key is stored in `.git/git-conceal.key` (local to your repository clone). The file is created with secure permissions (read/write for owner only on Unix systems). It is never committed to the repository.
 
-## Security Considerations
+## Security considerations
 
 For detailed security information, including key management, deterministic encryption implications, and security best practices, see [SECURITY.md](./SECURITY.md).
 
@@ -240,7 +240,7 @@ For detailed security information, including key management, deterministic encry
 - **File Metadata**: File names, commit messages, and other metadata are not encrypted.
 - **File Size**: Encrypted files are not compressible by Git.
 
-## New Releases
+## New releases
 
 Releases are automated by our CI every time we make a `git tag` on the repo. Be sure to update the version in the `Cargo.toml` first though.
 
