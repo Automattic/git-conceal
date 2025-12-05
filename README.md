@@ -11,7 +11,7 @@ Inspired by [git-crypt](https://github.com/AGWA/git-crypt). Written in Rust for 
 ## Features
 
  - **Transparent encryption/decryption**: Files are automatically encrypted on commit and decrypted on checkout, thanks to [git filters built-in feature](https://git-scm.com/docs/gitattributes#_filter)
- - **Symmetric key encryption**: Uses AES-256-CTR with deterministic IVs
+ - **Symmetric key encryption**: Uses AES-256-CTR ([Advanced Encryption Standard](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) with 256-bit keys in [Counter Mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR))) with deterministic IVs ([Initialization Vectors](https://en.wikipedia.org/wiki/Initialization_vector))
  - **Supports key rotation**: If your key gets leaked or a coworker leaves your team, you can rotate your secrets and encryption key easily
  - **Cross-platform**: Works on macOS, Linux, and Windows
 
@@ -226,7 +226,7 @@ This command will explain the impacts of rotating the key and ask for confirmati
 
 2. **Decryption**: When you checkout a file, Git's "smudge" filter decrypts it automatically.
 
-3. **Deterministic Encryption**: The same plaintext always encrypts to the same ciphertext (using a deterministic IV derived from the file content). This allows Git to detect when files haven't changed.
+3. **Deterministic Encryption**: The same plaintext always encrypts to the same ciphertext (using a deterministic IV derived from the file content). This allows Git to detect when files haven't changed. (See [SECURITY.md](./SECURITY.md) for more details on the security implications of deterministic encryption.)
 
 4. **Key Storage**: The encryption key is stored in `.git/git-conceal.key` (local to your repository clone). The file is created with secure permissions (read/write for owner only on Unix systems). It is never committed to the repository.
 
