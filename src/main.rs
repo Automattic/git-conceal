@@ -53,7 +53,8 @@ enum Commands {
         /// Key source
         #[arg(
             value_name = "KEY_SOURCE",
-            long_help = "- 'env:VARNAME': base64-encoded key in environment variable\n\
+            long_help = "- 'env:VARNAME': base64-encoded key in environment variable (recommended on CI)\n\
+                         - 'base64:BASE64_KEY': base64-encoded key\n\
                          - '-': raw binary key from stdin\n\
                          - <PATH>: raw binary key from file"
         )]
@@ -398,6 +399,8 @@ fn init_instructions(key_b64: &str) -> String {
               - From environment variable (base64):
                 export GIT_SECRETS_KEY='{key_b64}'
                 {bin_name} unlock env:GIT_SECRETS_KEY
+              - From base64-encoded key in the command line:
+                {bin_name} unlock "base64:{key_b64}"
               - From file (raw binary, 32 bytes):
                 {bin_name} unlock /path/to/key.bin
               - From stdin (raw binary, 32 bytes):

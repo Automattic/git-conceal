@@ -74,6 +74,7 @@ impl Key {
     /// Supports:
     /// - `"-"` for reading from stdin (raw binary format, 32 bytes)
     /// - `"env:VARNAME"` for reading from environment variable (base64 encoded)
+    /// - `"base64:BASE64_KEY"` for reading from base64-encoded key
     /// - File path for reading from a file (raw binary format, 32 bytes)
     ///
     /// Returns the encryption key.
@@ -94,6 +95,8 @@ impl Key {
                 format!("Failed to read key from environment variable {}", env_var)
             })?;
             Self::from_base64(&key_b64)
+        } else if let Some(base64_key) = key_source.strip_prefix("base64:") {
+            Self::from_base64(base64_key)
         } else {
             // Read from file (raw binary format)
             Self::from_file(Path::new(key_source))
@@ -389,6 +392,14 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Environment variable name cannot be empty"));
+    }
+
+    #[test]
+    fn test_read_from_source_base64() {
+        let key = test_key();
+        let b64 = key.to_base64();
+        let loaded_key = Key::read_from_source(&format!("base64:{}", b64)).unwrap();
+        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
     }
 
     // Note: Testing stdin reading is complex in unit tests as it requires
