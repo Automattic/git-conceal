@@ -1,6 +1,67 @@
+use crate::repo;
+use anyhow::{Context, Result};
 use serde::Serialize;
+use serde_json;
 use std::fmt;
 use std::path::PathBuf;
+
+pub fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
+    let repo = repo::Repo::discover()?;
+
+    if files.is_empty() {
+        // Show repository status
+        let repo_status = if repo.is_unlocked()? {
+            LockStatus::Unlocked
+        } else {
+            LockStatus::Locked
+        };
+        let filters_configured = repo.filters_configured()?;
+        let has_untracked_files = repo.has_untracked_files()?;
+        let encrypted_files: Vec<_> = repo
+            .find_filtered_files()?
+            .collect::<Result<Vec<_>>>()
+            .context("Failed to get file path")?;
+
+        let status = RepositoryStatus {
+            repository: repo.workdir().to_string_lossy().into_owned(),
+            status: repo_status,
+            filters_configured,
+            encrypted_files,
+            has_untracked_files,
+        };
+
+        if json {
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        } else {
+            print!("{}", status);
+        }
+    } else {
+        // Check status for specific files
+        let file_statuses: Vec<FileStatus> = files
+            .iter()
+            .map(|file_str| {
+                let file_path = std::path::Path::new(file_str);
+                let is_filtered = repo.is_filtered_file(file_path)?;
+                Ok(FileStatus {
+                    file: file_path.to_path_buf(),
+                    encrypted: is_filtered,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let status_list = FileStatusList {
+            files: file_statuses,
+        };
+
+        if json {
+            println!("{}", serde_json::to_string_pretty(&status_list)?);
+        } else {
+            print!("{}", status_list);
+        }
+    }
+
+    Ok(())
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]

@@ -9,17 +9,14 @@
 //! Files are automatically encrypted on commit and decrypted on checkout using Git's
 //! clean/smudge filter mechanism.
 
+mod commands;
 mod crypto;
-mod filter;
 mod fs_helpers;
 mod key;
 mod repo;
-mod status;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
-use indoc::indoc;
-use std::io::Write;
 
 /// Binary name, obtained from Cargo.toml at compile time
 pub const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
@@ -100,6 +97,7 @@ enum Commands {
     },
 }
 
+/// Key management subcommands
 #[derive(Subcommand)]
 enum KeyCommands {
     /// Show the current encryption key
@@ -126,6 +124,7 @@ enum KeyCommands {
     },
 }
 
+/// Git filter subcommands (internal use)
 #[derive(Subcommand)]
 enum FilterCommands {
     /// Clean filter: encrypt data (used by Git on commit)
@@ -144,339 +143,25 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => cmd_init(),
-        Commands::Unlock { key_source } => cmd_unlock(key_source),
-        Commands::Lock { force } => cmd_lock(force),
-        Commands::Status { files, json } => cmd_status(files, json),
-        Commands::Key { key_cmd } => cmd_key(key_cmd),
-        Commands::Filter { filter_cmd } => cmd_filter(filter_cmd),
-    }
-}
-
-fn cmd_init() -> Result<()> {
-    let repo = repo::Repo::discover()?;
-
-    // Check if already initialized
-    if repo.filters_configured()? {
-        anyhow::bail!(
-            "Repository is already initialized for {} (filters already configured)",
-            BINARY_NAME
-        )
-    }
-    if repo.is_unlocked()? {
-        anyhow::bail!("Repository is already configured and unlocked (key file exists)")
-    }
-
-    // Generate a new key
-    let key = key::Key::generate().context("Failed to generate encryption key")?;
-    repo.store_key(&key).context("Failed to store key file")?;
-
-    // Set up Git filters
-    repo.setup_filters()
-        .context("Failed to set up Git filters")?;
-
-    let key_b64 = key.to_base64();
-    let instructions = init_instructions(&key_b64);
-    println!("{}", instructions);
-
-    Ok(())
-}
-
-fn cmd_unlock(key_source: String) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-
-    // Check if any filtered files have local modifications
-    let dirty_filtered = repo.dirty_filtered_files()?;
-    if !dirty_filtered.is_empty() {
-        eprintln!("Error: Cannot unlock repository while there are local modifications in some encrypted files:");
-        for file in &dirty_filtered {
-            eprintln!("  {}", file.display());
-        }
-        eprintln!("\nPlease commit, stash or undo your changes before unlocking.");
-        anyhow::bail!("Repository has dirty encrypted files");
-    }
-
-    let key = key::Key::read_from_source(&key_source)?;
-
-    // Store key in key file
-    repo.store_key(&key).context("Failed to store key file")?;
-
-    // Set up Git filters
-    repo.setup_filters()
-        .context("Failed to set up Git filters")?;
-
-    // Force re-checkout of filtered files to trigger smudge filter (decrypt them)
-    repo.force_recheckout(repo.find_filtered_files()?)
-        .context("Failed to re-checkout encrypted files")?;
-
-    println!("Repository unlocked successfully");
-    Ok(())
-}
-
-fn cmd_lock(force: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-
-    // Check if any filtered files have local modifications
-    if !force {
-        let dirty_filtered = repo.dirty_filtered_files()?;
-        if !dirty_filtered.is_empty() {
-            eprintln!("Error: Cannot lock repository while there are local modifications in some encrypted files:");
-            for file in &dirty_filtered {
-                eprintln!("  {}", file.display());
+        Commands::Init => commands::init::cmd_init(),
+        Commands::Unlock { key_source } => commands::unlock::cmd_unlock(key_source),
+        Commands::Lock { force } => commands::lock::cmd_lock(force),
+        Commands::Status { files, json } => commands::status::cmd_status(files, json),
+        Commands::Key { key_cmd } => match key_cmd {
+            KeyCommands::Show { raw } => commands::key::cmd_key_show(raw),
+            KeyCommands::Rotate { skip_confirmation } => {
+                commands::key::cmd_key_rotate(skip_confirmation)
             }
-            eprintln!("\nPlease commit, stash or undo your changes before locking, or use --force to force lock.");
-            anyhow::bail!("Repository has dirty encrypted files");
+        },
+        Commands::Filter { filter_cmd } => {
+            let repo = repo::Repo::discover()?;
+            match filter_cmd {
+                FilterCommands::Clean => commands::filter::clean_filter(&repo),
+                FilterCommands::Smudge => commands::filter::smudge_filter(&repo),
+                FilterCommands::Textconv { filename } => {
+                    commands::filter::diff_textconv(&repo, &filename)
+                }
+            }
         }
     }
-
-    // Remove Git filter configuration first (so Git won't try to decrypt on checkout)
-    repo.remove_filters()
-        .context("Failed to remove Git filters")?;
-
-    // Remove the encryption key file
-    repo.remove_key().context("Failed to remove key file")?;
-
-    // Re-checkout filtered files to get raw encrypted data from repository
-    repo.force_recheckout(repo.find_filtered_files()?)
-        .context("Failed to re-checkout encrypted files")?;
-
-    println!("Repository locked (key and filters removed, files re-checked in encrypted state)");
-    Ok(())
-}
-
-fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-
-    if files.is_empty() {
-        // Show repository status
-        let repo_status = if repo.is_unlocked()? {
-            status::LockStatus::Unlocked
-        } else {
-            status::LockStatus::Locked
-        };
-        let filters_configured = repo.filters_configured()?;
-        let has_untracked_files = repo.has_untracked_files()?;
-        let encrypted_files: Vec<_> = repo
-            .find_filtered_files()?
-            .collect::<Result<Vec<_>>>()
-            .context("Failed to get file path")?;
-
-        let status = status::RepositoryStatus {
-            repository: repo.workdir().to_string_lossy().into_owned(),
-            status: repo_status,
-            filters_configured,
-            encrypted_files,
-            has_untracked_files,
-        };
-
-        if json {
-            println!("{}", serde_json::to_string_pretty(&status)?);
-        } else {
-            print!("{}", status);
-        }
-    } else {
-        // Check status for specific files
-        let file_statuses: Vec<status::FileStatus> = files
-            .iter()
-            .map(|file_str| {
-                let file_path = std::path::Path::new(file_str);
-                let is_filtered = repo.is_filtered_file(file_path)?;
-                Ok(status::FileStatus {
-                    file: file_path.to_path_buf(),
-                    encrypted: is_filtered,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let status_list = status::FileStatusList {
-            files: file_statuses,
-        };
-
-        if json {
-            println!("{}", serde_json::to_string_pretty(&status_list)?);
-        } else {
-            print!("{}", status_list);
-        }
-    }
-
-    Ok(())
-}
-
-fn cmd_key(key_cmd: KeyCommands) -> Result<()> {
-    match key_cmd {
-        KeyCommands::Show { raw } => cmd_key_show(raw),
-        KeyCommands::Rotate { skip_confirmation } => cmd_key_rotate(skip_confirmation),
-    }
-}
-
-fn cmd_key_show(raw: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-    if !repo.is_unlocked()? {
-        anyhow::bail!(
-            "Repository is locked (no key file found). Run '{} unlock' first.",
-            BINARY_NAME
-        );
-    }
-
-    let key = repo.load_key().context("Failed to load encryption key")?;
-    if raw {
-        std::io::stdout()
-            .write_all(key.as_bytes())
-            .context("Failed to write key to stdout")?;
-    } else {
-        println!("{}", key.to_base64());
-    }
-
-    Ok(())
-}
-
-fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-    if !repo.is_unlocked()? {
-        anyhow::bail!(
-            "Repository is locked. Please run '{} unlock' first before rotating the key.",
-            BINARY_NAME
-        );
-    }
-
-    if !skip_confirmation && !confirm(&rotate_confirmation_prompt())? {
-        anyhow::bail!("Key rotation cancelled.");
-    }
-
-    let new_key = key::Key::generate().context("Failed to generate new encryption key")?;
-    repo.store_key(&new_key)
-        .context("Failed to store new key")?;
-
-    // Re-normalize filtered files to re-encrypt them with the new key
-    println!("Re-encrypting secret files with the new key...");
-    repo.renormalize_files(repo.find_filtered_files()?)
-        .context("Failed to re-normalize encrypted files")?;
-
-    // Print follow-up instructions for the user
-    let new_key_b64 = new_key.to_base64();
-    let instructions = rotate_instructions(&new_key_b64);
-    println!("{}", instructions);
-
-    Ok(())
-}
-
-fn cmd_filter(filter_cmd: FilterCommands) -> Result<()> {
-    let repo = repo::Repo::discover()?;
-
-    match filter_cmd {
-        FilterCommands::Clean => filter::clean_filter(&repo),
-        FilterCommands::Smudge => filter::smudge_filter(&repo),
-        FilterCommands::Textconv { filename } => filter::diff_textconv(&repo, &filename),
-    }
-}
-
-// === Helper functions === //
-
-/// Prompt the user for confirmation (yes/no)
-///
-/// Displays the prompt message and waits for user input. Returns `true` if the user
-/// confirms with "yes" or "y" (case-insensitive), `false` otherwise.
-///
-/// # Errors
-/// Returns an error if reading from stdin or writing to stdout fails.
-fn confirm(prompt: &str) -> Result<bool> {
-    print!("{}", prompt);
-    std::io::stdout()
-        .flush()
-        .context("Failed to flush stdout")?;
-
-    let mut input = String::new();
-    std::io::stdin()
-        .read_line(&mut input)
-        .context("Failed to read user input")?;
-
-    let input = input.trim().to_lowercase();
-    Ok(input == "yes" || input == "y")
-}
-
-/// Format initialization instructions for display to the user
-fn init_instructions(key_b64: &str) -> String {
-    format!(
-        indoc! {r#"
-            Repository initialized for {bin_name}
-
-            Your encryption key (base64, save this securely!):
-            {key_b64}
-
-            Once you share this key with users you trust, they can unlock their working copy using one of these methods:
-              - From environment variable (base64):
-                export GIT_SECRETS_KEY='{key_b64}'
-                {bin_name} unlock env:GIT_SECRETS_KEY
-              - From base64-encoded key in the command line:
-                {bin_name} unlock "base64:{key_b64}"
-              - From file (raw binary, 32 bytes):
-                {bin_name} unlock /path/to/key.bin
-              - From stdin (raw binary, 32 bytes):
-                echo '{key_b64}' | base64 -d | {bin_name} unlock -
-
-            To start adding files to be encrypted in this repository:
-              - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:
-                ```
-                secrets-file.json  filter={filter} diff={diff}
-                secrets/*  filter={filter} diff={diff}
-                ```
-              - `git add` and `git commit` those files, alongside the `.gitattributes` file.
-                The files having the `filter` attribute set will be encrypted on commit and decrypted on checkout automatically.
-              - Run '{bin_name} status' to validate the list of files that are encrypted.
-        "#},
-        bin_name = BINARY_NAME,
-        key_b64 = key_b64,
-        filter = repo::FILTER_NAME,
-        diff = repo::DIFF_NAME,
-    )
-}
-
-fn rotate_confirmation_prompt() -> String {
-    indoc! {r#"
-        WARNING
-
-        This will re-encrypt all secret files in this repository with a new key.
-
-        This means that other users of this repository that had the old key will no
-        longer be able to access the content of the secret files commited after that
-        change, unless you share the new key with them.
-
-        Note that anyone who has the old key will still be able to decrypt the old
-        content of the secret files committed before this rotation in the Git history.
-        For this reason, especially if you are rotating the encryption key because
-        of a leak or of someone leaving the team, it is recommended to _also_ rotate
-        the actual secrets contained in those files.
-
-        Are you sure you want to continue and rotate the encryption key? (yes/no):
-    "#}
-    .to_string()
-}
-/// Format key rotation instructions for display to the user
-fn rotate_instructions(key_b64: &str) -> String {
-    format!(
-        indoc! {r#"
-            Key rotation completed successfully
-            Encrypted file(s) have been re-keyed and staged for commit.
-
-            New encryption key (base64, save this securely and share with your team!):
-            {key_b64}
-
-            Next steps:
-              1. Consider also rotating the actual secrets contained in the secret files
-                 (as the old key can still decrypt the old content from Git history),
-                 and update the content of those files with the new secrets.
-
-              2. Commit the re-keyed secret files:
-                 git commit -m "Rotate encryption key and re-encrypt secret files"
-
-              2. Share the new key with your coworkers securely. They will need to:
-                 a. Run '{bin_name} lock' to lock their repository
-                 b. Run 'git pull' to get the re-keyed secrets
-                 c. Run '{bin_name} unlock' with the new key to unlock with the new key
-
-            Once all team members have updated to the new key, the old key can be discarded.
-        "#},
-        bin_name = BINARY_NAME,
-        key_b64 = key_b64,
-    )
 }
