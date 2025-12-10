@@ -141,20 +141,24 @@ This will show the raw content as stored in the repository. So even if `cat my-s
 After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
 
 ```bash
-# Option 1: Provide the key via an environment variable (base64 encoded). Recommended on CI.
-export GIT_SECRETS_KEY="YOUR_BASE64_KEY"
-git-conceal unlock env:GIT_SECRETS_KEY
+# Option 1: Provide the key via an environment variable (base64 encoded).
+# Recommended on CI, where secret values like the key are usually exposed to jobs as env vars.
+$ git-conceal unlock env:GIT_CONCEAL_SECRET_KEY
 
-# Option 2: Provide the Base64-encoded key as command line argument. (Only use locally, as on CI this could leak the key in logs).
-git-conceal unlock "base64:c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk="
+# Option 2: Provide the Base64-encoded key as command line argument.
+# Only use locally, as on CI this could leak the key in logs.
+# Tip: start your command with a space to avoid it (and thus the key) being added to your shell's history
+$  git-conceal unlock "base64:c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk="
 
 # Option 3: Provide a path to a from file containing the raw binary, 32 bytes key.
-git-conceal unlock /path/to/key.bin
+$ git-conceal unlock /path/to/key.bin
 
 # Option 4: Provide it via stdin (expects raw binary, 32 bytes as input)
-cat /path/to/key.bin | git-conceal unlock -
-# Or convert from base64. (Only use locally, as on CI this could leak the key in logs).
-echo "c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk=" | base64 -d | git-conceal unlock -
+$ cat /path/to/key.bin | git-conceal unlock -
+# Or convert from base64.
+# Only use locally, as on CI this could leak the key in logs.
+# Tip: start your command with a space to avoid it (and thus the key) being added to your shell's history
+$  echo "c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk=" | base64 -d | git-conceal unlock -
 ```
 
 This will:
