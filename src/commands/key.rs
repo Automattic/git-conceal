@@ -117,7 +117,7 @@ fn rotate_instructions(key_b64: &str) -> String {
               2. Commit the re-keyed secret files:
                  git commit -m "Rotate encryption key and re-encrypt secret files"
 
-              2. Share the new key with your coworkers securely. They will need to:
+              3. Share the new key with your coworkers securely. They will need to:
                  a. Run '{bin_name} lock' to lock their repository
                  b. Run 'git pull' to get the re-keyed secrets
                  c. Run '{bin_name} unlock' with the new key to unlock with the new key
