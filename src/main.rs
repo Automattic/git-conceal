@@ -14,6 +14,7 @@ mod filter;
 mod fs_helpers;
 mod key;
 mod repo;
+mod status;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -81,6 +82,9 @@ enum Commands {
         /// Files to check (if empty, shows repository status)
         #[arg(value_name = "FILE")]
         files: Vec<String>,
+        /// Output status in JSON format
+        #[arg(long)]
+        json: bool,
     },
     /// Key management commands
     #[command(about = "Manage encryption key")]
@@ -143,7 +147,7 @@ fn main() -> Result<()> {
         Commands::Init => cmd_init(),
         Commands::Unlock { key_source } => cmd_unlock(key_source),
         Commands::Lock { force } => cmd_lock(force),
-        Commands::Status { files } => cmd_status(files),
+        Commands::Status { files, json } => cmd_status(files, json),
         Commands::Key { key_cmd } => cmd_key(key_cmd),
         Commands::Filter { filter_cmd } => cmd_filter(filter_cmd),
     }
@@ -240,54 +244,58 @@ fn cmd_lock(force: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_status(files: Vec<String>) -> Result<()> {
+fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
     if files.is_empty() {
         // Show repository status
-        println!("Repository: {}", repo.workdir().display());
-        let is_unlocked = repo.is_unlocked()?;
-        println!(
-            "Status: {}",
-            if is_unlocked { "unlocked" } else { "locked" }
-        );
-
+        let repo_status = if repo.is_unlocked()? {
+            status::LockStatus::Unlocked
+        } else {
+            status::LockStatus::Locked
+        };
         let filters_configured = repo.filters_configured()?;
-        println!(
-            "Filters configured: {}",
-            if filters_configured { "yes" } else { "no" }
-        );
+        let has_untracked_files = repo.has_untracked_files()?;
+        let encrypted_files: Vec<_> = repo
+            .find_filtered_files()?
+            .collect::<Result<Vec<_>>>()
+            .context("Failed to get file path")?;
 
-        println!("\nTracked files configured for encryption by Git filter:");
-        let mut has_files = false;
-        for file_result in repo.find_filtered_files()? {
-            let file = file_result?;
-            println!("  🔒 {}", file.display());
-            has_files = true;
-        }
-        if !has_files {
-            println!("  (none)");
-        }
+        let status = status::RepositoryStatus {
+            repository: repo.workdir().to_string_lossy().into_owned(),
+            status: repo_status,
+            filters_configured,
+            encrypted_files,
+            has_untracked_files,
+        };
 
-        // Only show warning if there are actually untracked files
-        if repo.has_untracked_files()? {
-            println!(
-                "\nNote: You have untracked files in your working copy. Even if some\n\
-                of those new files match the filter patterns in `.gitattributes`,\n\
-                they won't be listed here until you `git add` them to the staging area."
-            );
+        if json {
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        } else {
+            print!("{}", status);
         }
     } else {
         // Check status for specific files
-        for file_str in &files {
-            let file_path = std::path::Path::new(file_str);
-            let is_filtered = repo.is_filtered_file(file_path)?;
-            let status = if is_filtered {
-                "🔒 Encrypted in the repository"
-            } else {
-                "👀 Not encrypted in the repository"
-            };
-            println!("{:20}: {}", file_str, status);
+        let file_statuses: Vec<status::FileStatus> = files
+            .iter()
+            .map(|file_str| {
+                let file_path = std::path::Path::new(file_str);
+                let is_filtered = repo.is_filtered_file(file_path)?;
+                Ok(status::FileStatus {
+                    file: file_path.to_path_buf(),
+                    encrypted: is_filtered,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let status_list = status::FileStatusList {
+            files: file_statuses,
+        };
+
+        if json {
+            println!("{}", serde_json::to_string_pretty(&status_list)?);
+        } else {
+            print!("{}", status_list);
         }
     }
 
