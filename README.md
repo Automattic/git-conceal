@@ -65,7 +65,7 @@ Alternatively, you can manually download the pre-built binary suitable for your 
 ```bash
 git clone https://github.com/Automattic/git-conceal
 cd git-conceal
-cargo build --release
+make build-release
 ```
 
 The binary will be at `target/release/git-conceal` (or `target/release/git-conceal.exe` on Windows).
@@ -254,7 +254,7 @@ Releases are automated by our CI every time we make a `git tag` on the repo.
 
  - Create a `release/x.y.z` branch
  - Edit `Cargo.toml` to update the `version = "x.y.z"` field
- - Run `cargo check` to update the `Cargo.lock` with the new version and validate the code still compiles
+ - Run `make check-debug` to update the `Cargo.lock` with the new version and validate the code still compiles
  - `git add Cargo.toml Cargo.lock` then `git commit -m "Bump version to x.y.z"`
  - Create a PR with those changes and get it merged into `trunk`
  - Once it has landed in `trunk`, push a new tag (`git tag "x.y.z"` then `git push origin "x.y.z"`)
