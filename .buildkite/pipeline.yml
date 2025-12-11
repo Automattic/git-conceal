@@ -41,6 +41,7 @@ steps:
         agents:
           queue: windows
         command: |
+          choco install make -y
           bash .buildkite/test.sh
         notify:
           - github_commit_status: { context: "Test Windows" }
@@ -76,6 +77,7 @@ steps:
         agents:
           queue: windows
         command: |
+          choco install make -y
           bash .buildkite/build_and_upload_artifact.sh .exe
         notify:
           - github_commit_status: { context: "Build Windows" }
