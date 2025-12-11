@@ -43,15 +43,14 @@ fn init_instructions(key_b64: &str) -> String {
             {key_b64}
 
             Once you share this key with users you trust, they can unlock their working copy using one of these methods:
+              - From base64-encoded key passed directly as argument:
+                {bin_name} unlock "{key_b64}"
               - From environment variable (base64):
-                export GIT_SECRETS_KEY='{key_b64}'
-                {bin_name} unlock env:GIT_SECRETS_KEY
-              - From base64-encoded key in the command line:
-                {bin_name} unlock "base64:{key_b64}"
-              - From file (raw binary, 32 bytes):
-                {bin_name} unlock /path/to/key.bin
+                export GIT_CONCEAL_SECRET_KEY='{key_b64}'
+                {bin_name} unlock env:GIT_CONCEAL_SECRET_KEY
               - From stdin (raw binary, 32 bytes):
                 echo '{key_b64}' | base64 -d | {bin_name} unlock -
+                {bin_name} unlock - < /path/to/raw-binary-key.bin
 
             To start adding files to be encrypted in this repository:
               - List files (or file patterns) you want to encrypt in your `.gitattributes` file, like this:

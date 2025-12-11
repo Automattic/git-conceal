@@ -138,23 +138,26 @@ This will show the raw content as stored in the repository. So even if `cat my-s
 
 ### Unlock a repository
 
-After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
+After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key (that your coworkers would have shared with you) to decrypt it:
 
 ```bash
-# Option 1: Provide the key via an environment variable (base64 encoded). Recommended on CI.
-export GIT_SECRETS_KEY="YOUR_BASE64_KEY"
-git-conceal unlock env:GIT_SECRETS_KEY
+# Option 1: Provide the Base64-encoded key directly as command line argument.
+# Only use locally, as on CI this could leak the key in logs.
+# Tip: start your command with a space to avoid it (and thus the key) being added to your shell's history
+$  git-conceal unlock "c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk="
 
-# Option 2: Provide the Base64-encoded key as command line argument. (Only use locally, as on CI this could leak the key in logs).
-git-conceal unlock "base64:c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk="
+# Option 2: Provide the key via an environment variable (base64 encoded), by using the `env:` prefix.
+# Recommended on CI, where secret values like the key are usually exposed to jobs as env vars.
+# Prefer this over `git-conceal unlock $GIT_CONCEAL_SECRET_KEY` to reduce the risk of accidentally leaking
+# the key e.g. in CI logs (which might resolve `$VAR` env vars before printing the resolved command in logs)
+$ git-conceal unlock env:GIT_CONCEAL_SECRET_KEY
 
-# Option 3: Provide a path to a from file containing the raw binary, 32 bytes key.
-git-conceal unlock /path/to/key.bin
-
-# Option 4: Provide it via stdin (expects raw binary, 32 bytes as input)
-cat /path/to/key.bin | git-conceal unlock -
-# Or convert from base64. (Only use locally, as on CI this could leak the key in logs).
-echo "c3VwcG9zZWRseS15b3VyLWJpbmFyeS1zZWNyZXRrZXk=" | base64 -d | git-conceal unlock -
+# Option 3: Provide it via stdin (expects raw binary, 32 bytes as input)
+# For example, if you have the binary key in a file (which you would hopefully have protected properly!)
+$ git-conceal unlock - </path/to/keyfile.bin
+# Or if you have the base64-encoded key in your clipboard, you could do:
+$ pbpaste | base64 -d | git-conceal unlock -
+# (Though in that case `git-conceal unlock $(pbpaste)` would achieve the same thing)
 ```
 
 This will:
@@ -186,7 +189,7 @@ git-conceal status
 This shows:
 - Whether the repository is locked or unlocked
 - Whether filters are configured
-- Which file patterns are encrypted (from `.gitattributes`)
+- Which files are handled by `git-conceal` (i.e. tracked files matching one of the patterns with `filter=git-conceal` in your `.gitattributes`)
 
 ```bash
 git-conceal status <FILES>
@@ -205,7 +208,7 @@ git-conceal key show
 ### Rotate the encryption key
 
 There are times when you might need to rotate the encryption key used in an encrypted repository.
-For example, in the unfortunate even of the key leaking or when a coworker leaves your team/company and you want to ensure they can't access new secrets.
+For example, in the unfortunate event of the key leaking, or when a coworker leaves your team/company and you want to ensure they can't access new secrets.
 
 You can rotate the encryption key with:
 
@@ -245,15 +248,19 @@ For detailed security information, including key management, deterministic encry
 
 ## New releases
 
-Releases are automated by our CI every time we make a `git tag` on the repo. Be sure to update the version in the `Cargo.toml` first though.
+Releases are automated by our CI every time we make a `git tag` on the repo.
+
+<details><summary>Release instructions for maintainers</summary>
 
  - Create a `release/x.y.z` branch
  - Edit `Cargo.toml` to update the `version = "x.y.z"` field
- - Run `cargo check` to update the `Cargo.lock` and validate the code still compiles
+ - Run `cargo check` to update the `Cargo.lock` with the new version and validate the code still compiles
  - `git add Cargo.toml Cargo.lock` then `git commit -m "Bump version to x.y.z"`
- - Create a PR and get it merged
+ - Create a PR with those changes and get it merged into `trunk`
  - Once it has landed in `trunk`, push a new tag (`git tag "x.y.z"` then `git push origin "x.y.z"`)
- - Then let the CI build the release binaries for all platforms, create the GitHub Release, and attach the compiled binaries as assets.
+
+The CI will trigger on the Git tag and take care of building the release binaries for all platforms and creating the GitHub Release with those binaries attached as assets.
+</details>
 
 ## License
 

@@ -50,11 +50,10 @@ enum Commands {
     Unlock {
         /// Key source
         #[arg(
-            value_name = "KEY_SOURCE",
-            long_help = "- 'env:VARNAME': base64-encoded key in environment variable (recommended on CI)\n\
-                         - 'base64:BASE64_KEY': base64-encoded key\n\
-                         - '-': raw binary key from stdin\n\
-                         - <PATH>: raw binary key from file"
+            value_name = "KEY",
+            long_help = "- 'BASE64KEY': the base64-encoded key passed directly as argument\n\
+                         - 'env:VARNAME': read the base64-encoded key from the given environment variable (recommended on CI)\n\
+                         - '-': read the raw binary key from stdin (expects raw binary, 32 bytes as input)"
         )]
         key_source: String,
     },

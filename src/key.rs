@@ -72,10 +72,9 @@ impl Key {
     /// Read encryption key from various sources
     ///
     /// Supports:
-    /// - `"-"` for reading from stdin (raw binary format, 32 bytes)
+    /// - Base64-encoded key string (passed directly as argument)
     /// - `"env:VARNAME"` for reading from environment variable (base64 encoded)
-    /// - `"base64:BASE64_KEY"` for reading from base64-encoded key
-    /// - File path for reading from a file (raw binary format, 32 bytes)
+    /// - `"-"` for reading from stdin (raw binary format, 32 bytes)
     ///
     /// Returns the encryption key.
     pub fn read_from_source(key_source: &str) -> Result<Self> {
@@ -95,11 +94,9 @@ impl Key {
                 format!("Failed to read key from environment variable {}", env_var)
             })?;
             Self::from_base64(&key_b64)
-        } else if let Some(base64_key) = key_source.strip_prefix("base64:") {
-            Self::from_base64(base64_key)
         } else {
-            // Read from file (raw binary format)
-            Self::from_file(Path::new(key_source))
+            // Treat as base64-encoded key (unprefixed)
+            Self::from_base64(key_source)
         }
     }
 }
@@ -301,18 +298,6 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
     }
 
-    #[test]
-    fn test_read_from_source_file() {
-        let temp_dir = TempDir::new().unwrap();
-        let key_file = temp_dir.path().join("test.key");
-
-        let key = test_key();
-        fs::write(&key_file, key.as_bytes()).unwrap();
-
-        let loaded_key = Key::read_from_source(key_file.to_str().unwrap()).unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
-    }
-
     /// This test must run serially (not in parallel with other tests) because it modifies
     /// environment variables. Environment variable modification is not thread-safe and can
     /// cause race conditions when tests run in parallel.
@@ -398,18 +383,23 @@ mod tests {
     fn test_read_from_source_base64() {
         let key = test_key();
         let b64 = key.to_base64();
-        let loaded_key = Key::read_from_source(&format!("base64:{}", b64)).unwrap();
+        let loaded_key = Key::read_from_source(&b64).unwrap();
         assert_eq!(loaded_key.as_bytes(), key.as_bytes());
     }
 
     // Note: Testing stdin reading is complex in unit tests as it requires
     // mocking stdin or using a separate process. This would be better suited
-    // for integration tests. The file and env var cases are tested above.
+    // for integration tests. The env var and base64 cases are tested above.
 
     #[test]
-    fn test_read_from_source_invalid_source() {
-        let result = Key::read_from_source("/nonexistent/path/key.bin");
+    fn test_read_from_source_invalid_base64() {
+        // A user accidentally passing a file path should be treated as base64 key and fail to decode
+        let result = Key::read_from_source("path/to/secret-symmetric-key.bin");
         assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to decode base64 key"));
     }
 
     #[test]
