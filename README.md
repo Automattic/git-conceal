@@ -138,7 +138,7 @@ This will show the raw content as stored in the repository. So even if `cat my-s
 
 ### Unlock a repository
 
-After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key that your coworkers would have shared with you to decrypt it:
+After you freshly clone a repository which contains files which have been encrypted by `git-conceal`, you need to provide the symmetric key (that your coworkers would have shared with you) to decrypt it:
 
 ```bash
 # Option 1: Provide the Base64-encoded key directly as command line argument.
@@ -189,7 +189,7 @@ git-conceal status
 This shows:
 - Whether the repository is locked or unlocked
 - Whether filters are configured
-- Which file patterns are encrypted (from `.gitattributes`)
+- Which files are handled by `git-conceal` (i.e. tracked files matching one of the patterns with `filter=git-conceal` in your `.gitattributes`)
 
 ```bash
 git-conceal status <FILES>
@@ -208,7 +208,7 @@ git-conceal key show
 ### Rotate the encryption key
 
 There are times when you might need to rotate the encryption key used in an encrypted repository.
-For example, in the unfortunate even of the key leaking or when a coworker leaves your team/company and you want to ensure they can't access new secrets.
+For example, in the unfortunate event of the key leaking, or when a coworker leaves your team/company and you want to ensure they can't access new secrets.
 
 You can rotate the encryption key with:
 
@@ -248,15 +248,19 @@ For detailed security information, including key management, deterministic encry
 
 ## New releases
 
-Releases are automated by our CI every time we make a `git tag` on the repo. Be sure to update the version in the `Cargo.toml` first though.
+Releases are automated by our CI every time we make a `git tag` on the repo.
+
+<details><summary>Release instructions for maintainers</summary>
 
  - Create a `release/x.y.z` branch
  - Edit `Cargo.toml` to update the `version = "x.y.z"` field
- - Run `cargo check` to update the `Cargo.lock` and validate the code still compiles
+ - Run `cargo check` to update the `Cargo.lock` with the new version and validate the code still compiles
  - `git add Cargo.toml Cargo.lock` then `git commit -m "Bump version to x.y.z"`
- - Create a PR and get it merged
+ - Create a PR with those changes and get it merged into `trunk`
  - Once it has landed in `trunk`, push a new tag (`git tag "x.y.z"` then `git push origin "x.y.z"`)
- - Then let the CI build the release binaries for all platforms, create the GitHub Release, and attach the compiled binaries as assets.
+
+The CI will trigger on the Git tag and take care of building the release binaries for all platforms and creating the GitHub Release with those binaries attached as assets.
+</details>
 
 ## License
 
