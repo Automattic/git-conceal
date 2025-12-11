@@ -3,9 +3,25 @@ use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LockStatus {
+    Locked,
+    Unlocked,
+}
+
+impl fmt::Display for LockStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LockStatus::Locked => write!(f, "locked"),
+            LockStatus::Unlocked => write!(f, "unlocked"),
+        }
+    }
+}
+
+#[derive(Serialize)]
 pub struct RepositoryStatus {
     pub repository: String,
-    pub status: String,
+    pub status: LockStatus,
     pub filters_configured: bool,
     pub encrypted_files: Vec<PathBuf>,
     pub has_untracked_files: bool,

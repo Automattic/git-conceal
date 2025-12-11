@@ -249,7 +249,11 @@ fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
 
     if files.is_empty() {
         // Show repository status
-        let is_unlocked = repo.is_unlocked()?;
+        let repo_status = if repo.is_unlocked()? {
+            status::LockStatus::Unlocked
+        } else {
+            status::LockStatus::Locked
+        };
         let filters_configured = repo.filters_configured()?;
         let has_untracked_files = repo.has_untracked_files()?;
         let encrypted_files: Vec<_> = repo
@@ -259,7 +263,7 @@ fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
 
         let status = status::RepositoryStatus {
             repository: repo.workdir().to_string_lossy().into_owned(),
-            status: if is_unlocked { "unlocked" } else { "locked" }.to_string(),
+            status: repo_status,
             filters_configured,
             encrypted_files,
             has_untracked_files,
