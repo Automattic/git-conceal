@@ -1,13 +1,16 @@
-.PHONY: debug-build release-build test fmt lint fmt-lint help
+.PHONY: check-debug build-debug check-release build-release test fmt lint lint-pedantic lint-fix help
 
 help:
 	@echo "Available targets:"
-	@echo "  debug-build   - Build the project in debug mode"
-	@echo "  release-build - Build the project in release mode"
-	@echo "  test          - Run all tests"
-	@echo "  fmt           - Format the code"
-	@echo "  lint          - Run clippy linter"
-	@echo "  fmt-lint      - Format and lint the code"
+	@echo "  check-debug    - Check the project in debug mode"
+	@echo "  build-debug    - Build the project in debug mode"
+	@echo "  check-release  - Check the project in release mode"
+	@echo "  build-release  - Build the project in release mode"
+	@echo "  test           - Run all tests"
+	@echo "  fmt            - Format the code"
+	@echo "  lint           - Run clippy linter"
+	@echo "  lint-pedantic  - Run clippy with pedantic warnings"
+	@echo "  lint-fix       - Run clippy and auto-fix issues"
 
 check-debug:
 	cargo check
