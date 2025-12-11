@@ -9,7 +9,7 @@ steps:
     agents:
       queue: default
     command: |
-      .buildkite/install_rust.sh
+      .buildkite/install_build_tools.sh
       .buildkite/lint.sh
     notify:
       - github_commit_status: { context: "Lint" }
@@ -21,7 +21,7 @@ steps:
         agents:
           queue: mac
         command: |
-          .buildkite/install_rust.sh
+          .buildkite/install_build_tools.sh
           .buildkite/test.sh
         notify:
           - github_commit_status: { context: "Test macOS" }
@@ -31,7 +31,7 @@ steps:
         agents:
           queue: default
         command: |
-          .buildkite/install_rust.sh
+          .buildkite/install_build_tools.sh
           .buildkite/test.sh
         notify:
           - github_commit_status: { context: "Test Linux" }
@@ -41,8 +41,7 @@ steps:
         agents:
           queue: windows
         command: |
-          # Create a symlink to mingw32-make.exe so that scripts can just call "make"
-          New-Item -ItemType SymbolicLink -Path "C:\ProgramData\chocolatey\bin\make.exe" -Target "C:\ProgramData\chocolatey\bin\mingw32-make.exe" -Force
+          bash .buildkite/install_build_tools.sh
           bash .buildkite/test.sh
         notify:
           - github_commit_status: { context: "Test Windows" }
@@ -56,7 +55,7 @@ steps:
         agents:
           queue: mac
         command: |
-          .buildkite/install_rust.sh
+          .buildkite/install_build_tools.sh
           .buildkite/build_and_upload_artifact.sh
         notify:
           - github_commit_status: { context: "Build macOS" }
@@ -67,7 +66,7 @@ steps:
         agents:
           queue: default
         command: |
-          .buildkite/install_rust.sh
+          .buildkite/install_build_tools.sh
           .buildkite/build_and_upload_artifact.sh
         notify:
           - github_commit_status: { context: "Build Linux" }
@@ -78,8 +77,7 @@ steps:
         agents:
           queue: windows
         command: |
-          # Create a symlink to mingw32-make.exe so that scripts can just call "make"
-          New-Item -ItemType SymbolicLink -Path "C:\ProgramData\chocolatey\bin\make.exe" -Target "C:\ProgramData\chocolatey\bin\mingw32-make.exe" -Force
+          bash .buildkite/install_build_tools.sh
           bash .buildkite/build_and_upload_artifact.sh .exe
         notify:
           - github_commit_status: { context: "Build Windows" }
