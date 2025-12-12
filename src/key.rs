@@ -18,13 +18,6 @@ impl Key {
     /// Size of the encryption key in bytes (256 bits for AES-256)
     pub const KEY_SIZE: usize = 32;
 
-    /// Create a new Key from raw bytes
-    ///
-    /// This is primarily used internally when constructing keys from various sources.
-    pub fn from_bytes(bytes: [u8; Self::KEY_SIZE]) -> Self {
-        Self { bytes }
-    }
-
     /// Read encryption key from a file (raw binary format, 32 bytes)
     pub fn from_file(file_path: &Path) -> Result<Self> {
         let key_bytes = fs::read(file_path)
@@ -41,7 +34,7 @@ impl Key {
         let bytes_vec = crate::crypto::generate_key_bytes(Self::KEY_SIZE)?;
         let mut bytes = [0u8; Self::KEY_SIZE];
         bytes.copy_from_slice(&bytes_vec);
-        Ok(Self::from_bytes(bytes))
+        Ok(Self::from(bytes))
     }
 
     /// Create a key from a base64-encoded string
@@ -102,6 +95,15 @@ impl AsRef<[u8; Self::KEY_SIZE]> for Key {
     }
 }
 
+/// Create a new Key from raw bytes
+///
+/// This is primarily used internally when constructing keys from various sources.
+impl From<[u8; Self::KEY_SIZE]> for Key {
+    fn from(bytes: [u8; Self::KEY_SIZE]) -> Self {
+        Self { bytes }
+    }
+}
+
 // === Private Helper functions === //
 
 /// Convert a byte vector to a key array, validating the length
@@ -116,7 +118,7 @@ fn bytes_to_key(key_bytes: Vec<u8>) -> Result<Key> {
 
     let mut bytes = [0u8; Key::KEY_SIZE];
     bytes.copy_from_slice(&key_bytes);
-    Ok(Key::from_bytes(bytes))
+    Ok(Key::from(bytes))
 }
 
 // === Tests === //
@@ -136,7 +138,7 @@ mod tests {
 
     /// Get a constant test key
     fn test_key() -> Key {
-        Key::from_bytes(TEST_KEY_BYTES)
+        Key::from(TEST_KEY_BYTES)
     }
 
     #[test]
@@ -146,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_from_bytes() {
-        let key = Key::from_bytes(TEST_KEY_BYTES);
+        let key = Key::from(TEST_KEY_BYTES);
         assert_eq!(key.as_ref(), &TEST_KEY_BYTES);
     }
 
@@ -442,8 +444,8 @@ mod tests {
 
     #[test]
     fn test_key_equality_via_bytes() {
-        let key1 = Key::from_bytes(TEST_KEY_BYTES);
-        let key2 = Key::from_bytes(TEST_KEY_BYTES);
+        let key1 = Key::from(TEST_KEY_BYTES);
+        let key2 = Key::from(TEST_KEY_BYTES);
 
         assert_eq!(key1.as_ref(), key2.as_ref());
     }
@@ -453,7 +455,7 @@ mod tests {
         let key1 = test_key();
         let mut different_bytes = TEST_KEY_BYTES;
         different_bytes[0] ^= 0xFF; // Flip first byte
-        let key2 = Key::from_bytes(different_bytes);
+        let key2 = Key::from(different_bytes);
 
         assert_ne!(key1.as_ref(), key2.as_ref());
     }
