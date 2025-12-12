@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::io::Read;
-use std::ops::Deref;
 use std::path::Path;
 
 /// Symmetric key for encryption/decryption
@@ -101,10 +100,8 @@ impl Key {
     }
 }
 
-impl Deref for Key {
-    type Target = [u8; Self::KEY_SIZE];
-
-    fn deref(&self) -> &Self::Target {
+impl AsRef<[u8; Self::KEY_SIZE]> for Key {
+    fn as_ref(&self) -> &[u8; Self::KEY_SIZE] {
         &self.bytes
     }
 }
@@ -408,14 +405,6 @@ mod tests {
         let bytes = key.as_bytes();
 
         assert_eq!(bytes.len(), Key::KEY_SIZE);
-        assert_eq!(bytes, &TEST_KEY_BYTES);
-    }
-
-    #[test]
-    fn test_deref() {
-        let key = test_key();
-        let bytes: &[u8; Key::KEY_SIZE] = &*key;
-
         assert_eq!(bytes, &TEST_KEY_BYTES);
     }
 
