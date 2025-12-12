@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
+use std::fmt::Display;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -27,11 +28,6 @@ impl Key {
         let mut bytes = [0u8; Self::KEY_SIZE];
         bytes.copy_from_slice(&bytes_vec);
         Ok(Self::from(bytes))
-    }
-
-    /// Export key as base64 string
-    pub fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self.bytes)
     }
 
     /// Read encryption key from various sources
@@ -125,6 +121,13 @@ impl TryFrom<&str> for Key {
     }
 }
 
+/// Export key as base64 string
+impl Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", general_purpose::STANDARD.encode(self.bytes))
+    }
+}
+
 // === Tests === //
 
 #[cfg(test)]
@@ -172,7 +175,7 @@ mod tests {
     #[test]
     fn test_to_base64() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         assert!(!b64.is_empty());
         assert!(b64
@@ -183,7 +186,7 @@ mod tests {
     #[test]
     fn test_from_base64() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         let decoded_key = Key::try_from(b64.as_str()).unwrap();
         assert_eq!(decoded_key.as_ref(), key.as_ref());
@@ -192,7 +195,7 @@ mod tests {
     #[test]
     fn test_base64_roundtrip() {
         let original_key = test_key();
-        let b64 = original_key.to_base64();
+        let b64 = original_key.to_string();
         let decoded_key = Key::try_from(b64.as_str()).unwrap();
 
         assert_eq!(original_key.as_ref(), decoded_key.as_ref());
@@ -226,7 +229,7 @@ mod tests {
     #[test]
     fn test_from_base64_with_whitespace() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         // Test with leading/trailing whitespace (should be automatically trimmed)
         let decoded_key = Key::try_from(format!("  {}  ", b64).as_str()).unwrap();
@@ -305,7 +308,7 @@ mod tests {
     #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
     fn test_read_from_source_env() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         // Set environment variable
         // SAFETY: This test runs serially, so no race conditions with other tests
@@ -330,7 +333,7 @@ mod tests {
     #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
     fn test_read_from_source_env_with_whitespace() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         // Set environment variable with whitespace
         // SAFETY: This test runs serially, so no race conditions with other tests
@@ -381,7 +384,7 @@ mod tests {
     #[test]
     fn test_read_from_source_base64() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
         let loaded_key = Key::read_from_source(&b64).unwrap();
         assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
@@ -439,8 +442,8 @@ mod tests {
     #[test]
     fn test_base64_encoding_consistency() {
         let key = test_key();
-        let b64_1 = key.to_base64();
-        let b64_2 = key.to_base64();
+        let b64_1 = key.to_string();
+        let b64_2 = key.to_string();
 
         // Same key should produce same base64 encoding
         assert_eq!(b64_1, b64_2);
@@ -467,7 +470,7 @@ mod tests {
     #[test]
     fn test_multiple_base64_decodings() {
         let key = test_key();
-        let b64 = key.to_base64();
+        let b64 = key.to_string();
 
         // Decode multiple times, should get same result
         let decoded1 = Key::try_from(b64.as_str()).unwrap();

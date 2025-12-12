@@ -20,7 +20,7 @@ pub fn cmd_key_show(raw: bool) -> Result<()> {
             .write_all(key.as_ref())
             .context("Failed to write key to stdout")?;
     } else {
-        println!("{}", key.to_base64());
+        println!("{}", key);
     }
 
     Ok(())
@@ -49,8 +49,7 @@ pub fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
         .context("Failed to re-normalize encrypted files")?;
 
     // Print follow-up instructions for the user
-    let new_key_b64 = new_key.to_base64();
-    let instructions = rotate_instructions(&new_key_b64);
+    let instructions = rotate_instructions(new_key);
     println!("{}", instructions);
 
     Ok(())
@@ -100,14 +99,14 @@ fn rotate_confirmation_prompt() -> String {
 }
 
 /// Format key rotation instructions for display to the user
-fn rotate_instructions(key_b64: &str) -> String {
+fn rotate_instructions(key: key::Key) -> String {
     format!(
         indoc! {r#"
             Key rotation completed successfully
             Encrypted file(s) have been re-keyed and staged for commit.
 
             New encryption key (base64, save this securely and share with your team!):
-            {key_b64}
+            {key}
 
             Next steps:
               1. Consider also rotating the actual secrets contained in the secret files
@@ -125,6 +124,6 @@ fn rotate_instructions(key_b64: &str) -> String {
             Once all team members have updated to the new key, the old key can be discarded.
         "#},
         bin_name = BINARY_NAME,
-        key_b64 = key_b64,
+        key = key,
     )
 }
