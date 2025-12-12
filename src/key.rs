@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use std::fmt::Display;
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 
 /// Symmetric key for encryption/decryption
@@ -28,37 +27,6 @@ impl Key {
         let mut bytes = [0u8; Self::KEY_SIZE];
         bytes.copy_from_slice(&bytes_vec);
         Ok(Self::from(bytes))
-    }
-
-    /// Read encryption key from various sources
-    ///
-    /// Supports:
-    /// - Base64-encoded key string (passed directly as argument)
-    /// - `"env:VARNAME"` for reading from environment variable (base64 encoded)
-    /// - `"-"` for reading from stdin (raw binary format, 32 bytes)
-    ///
-    /// Returns the encryption key.
-    pub fn read_from_source(key_source: &str) -> Result<Self> {
-        if key_source == "-" {
-            // Read from stdin (raw binary format)
-            let mut key_bytes = Vec::new();
-            std::io::stdin()
-                .read_to_end(&mut key_bytes)
-                .context("Failed to read key from stdin")?;
-            Key::try_from(key_bytes.as_slice())
-        } else if let Some(env_var) = key_source.strip_prefix("env:") {
-            // Read from environment variable (base64 encoded, format: env:VARNAME)
-            if env_var.is_empty() {
-                anyhow::bail!("Environment variable name cannot be empty after 'env:'");
-            }
-            let key_b64 = std::env::var(env_var).with_context(|| {
-                format!("Failed to read key from environment variable {}", env_var)
-            })?;
-            Self::try_from(key_b64.as_str())
-        } else {
-            // Treat as base64-encoded key (unprefixed)
-            Self::try_from(key_source)
-        }
     }
 }
 
@@ -217,7 +185,7 @@ mod tests {
         let short_b64 = "dGVzdC1rZXktMTYtYnl0ZXM="; // "test-key-16-bytes"
         let result = Key::try_from(short_b64);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid key size"));
+        assert_eq!(result.unwrap_err().to_string(), "Invalid size for key decoded from base64");
     }
 
     #[test]
@@ -298,110 +266,6 @@ mod tests {
         let result = Key::try_from(key_file.as_path());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
-    }
-
-    /// This test must run serially (not in parallel with other tests) because it modifies
-    /// environment variables. Environment variable modification is not thread-safe and can
-    /// cause race conditions when tests run in parallel.
-    #[serial_test::serial]
-    #[test]
-    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
-    fn test_read_from_source_env() {
-        let key = test_key();
-        let b64 = key.to_string();
-
-        // Set environment variable
-        // SAFETY: This test runs serially, so no race conditions with other tests
-        unsafe {
-            std::env::set_var("TEST_KEY_VAR", &b64);
-        }
-
-        let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
-        assert_eq!(loaded_key.as_ref(), key.as_ref());
-
-        // Clean up
-        unsafe {
-            std::env::remove_var("TEST_KEY_VAR");
-        }
-    }
-
-    /// This test must run serially (not in parallel with other tests) because it modifies
-    /// environment variables. Environment variable modification is not thread-safe and can
-    /// cause race conditions when tests run in parallel.
-    #[serial_test::serial]
-    #[test]
-    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
-    fn test_read_from_source_env_with_whitespace() {
-        let key = test_key();
-        let b64 = key.to_string();
-
-        // Set environment variable with whitespace
-        // SAFETY: This test runs serially, so no race conditions with other tests
-        unsafe {
-            std::env::set_var("TEST_KEY_VAR", &format!("  {}  ", b64));
-        }
-
-        let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
-        assert_eq!(loaded_key.as_ref(), key.as_ref());
-
-        // Clean up
-        unsafe {
-            std::env::remove_var("TEST_KEY_VAR");
-        }
-    }
-
-    /// This test must run serially (not in parallel with other tests) because it modifies
-    /// environment variables. Environment variable modification is not thread-safe and can
-    /// cause race conditions when tests run in parallel.
-    #[serial_test::serial]
-    #[test]
-    #[allow(unsafe_code)] // Required for std::env::set_var/remove_var in Rust 2024 Edition
-    fn test_read_from_source_env_nonexistent() {
-        // Make sure the variable doesn't exist
-        // SAFETY: This test runs serially, so no race conditions with other tests
-        unsafe {
-            std::env::remove_var("NONEXISTENT_VAR");
-        }
-
-        let result = Key::read_from_source("env:NONEXISTENT_VAR");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to read key from environment variable"));
-    }
-
-    #[test]
-    fn test_read_from_source_env_empty_name() {
-        let result = Key::read_from_source("env:");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Environment variable name cannot be empty"));
-    }
-
-    #[test]
-    fn test_read_from_source_base64() {
-        let key = test_key();
-        let b64 = key.to_string();
-        let loaded_key = Key::read_from_source(&b64).unwrap();
-        assert_eq!(loaded_key.as_ref(), key.as_ref());
-    }
-
-    // Note: Testing stdin reading is complex in unit tests as it requires
-    // mocking stdin or using a separate process. This would be better suited
-    // for integration tests. The env var and base64 cases are tested above.
-
-    #[test]
-    fn test_read_from_source_invalid_base64() {
-        // A user accidentally passing a file path should be treated as base64 key and fail to decode
-        let result = Key::read_from_source("path/to/secret-symmetric-key.bin");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to decode base64 key"));
     }
 
     #[test]
