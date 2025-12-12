@@ -29,17 +29,6 @@ impl Key {
         Ok(Self::from(bytes))
     }
 
-    /// Create a key from a base64-encoded string
-    ///
-    /// The input string is automatically trimmed of leading and trailing whitespace
-    /// to handle cases where base64 strings are copied with extra whitespace.
-    pub fn from_base64(key_b64: &str) -> Result<Self> {
-        let key_bytes = general_purpose::STANDARD
-            .decode(key_b64.trim())
-            .context("Failed to decode base64 key")?;
-        Key::try_from(key_bytes.as_slice()).context("Invalid size for key decoded from base64")
-    }
-
     /// Export key as base64 string
     pub fn to_base64(&self) -> String {
         general_purpose::STANDARD.encode(self.bytes)
@@ -69,10 +58,10 @@ impl Key {
             let key_b64 = std::env::var(env_var).with_context(|| {
                 format!("Failed to read key from environment variable {}", env_var)
             })?;
-            Self::from_base64(&key_b64)
+            Self::try_from(key_b64.as_str())
         } else {
             // Treat as base64-encoded key (unprefixed)
-            Self::from_base64(key_source)
+            Self::try_from(key_source)
         }
     }
 }
@@ -119,6 +108,20 @@ impl TryFrom<&Path> for Key {
             .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
         Key::try_from(key_bytes.as_slice())
             .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
+    }
+}
+
+/// Create a key from a base64-encoded string
+///
+/// The input string is automatically trimmed of leading and trailing whitespace
+/// to handle cases where base64 strings are copied with extra whitespace.
+impl TryFrom<&str> for Key {
+    type Error = anyhow::Error;
+    fn try_from(key_b64: &str) -> Result<Self> {
+        let key_bytes = general_purpose::STANDARD
+            .decode(key_b64.trim())
+            .context("Failed to decode base64 key")?;
+        Key::try_from(key_bytes.as_slice()).context("Invalid size for key decoded from base64")
     }
 }
 
@@ -182,7 +185,7 @@ mod tests {
         let key = test_key();
         let b64 = key.to_base64();
 
-        let decoded_key = Key::from_base64(&b64).unwrap();
+        let decoded_key = Key::try_from(b64.as_str()).unwrap();
         assert_eq!(decoded_key.as_ref(), key.as_ref());
     }
 
@@ -190,14 +193,14 @@ mod tests {
     fn test_base64_roundtrip() {
         let original_key = test_key();
         let b64 = original_key.to_base64();
-        let decoded_key = Key::from_base64(&b64).unwrap();
+        let decoded_key = Key::try_from(b64.as_str()).unwrap();
 
         assert_eq!(original_key.as_ref(), decoded_key.as_ref());
     }
 
     #[test]
     fn test_from_base64_invalid_base64() {
-        let result = Key::from_base64("not valid base64!!!");
+        let result = Key::try_from("not valid base64!!!");
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -209,14 +212,14 @@ mod tests {
     fn test_from_base64_wrong_size() {
         // Base64 of 16 bytes (too short)
         let short_b64 = "dGVzdC1rZXktMTYtYnl0ZXM="; // "test-key-16-bytes"
-        let result = Key::from_base64(short_b64);
+        let result = Key::try_from(short_b64);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
     }
 
     #[test]
     fn test_from_base64_empty_string() {
-        let result = Key::from_base64("");
+        let result = Key::try_from("");
         assert!(result.is_err());
     }
 
@@ -226,11 +229,11 @@ mod tests {
         let b64 = key.to_base64();
 
         // Test with leading/trailing whitespace (should be automatically trimmed)
-        let decoded_key = Key::from_base64(&format!("  {}  ", b64)).unwrap();
+        let decoded_key = Key::try_from(format!("  {}  ", b64).as_str()).unwrap();
         assert_eq!(decoded_key.as_ref(), key.as_ref());
 
         // Test with newlines and tabs
-        let decoded_key2 = Key::from_base64(&format!("\n\t{}\n\t", b64)).unwrap();
+        let decoded_key2 = Key::try_from(format!("\n\t{}\n\t", b64).as_str()).unwrap();
         assert_eq!(decoded_key2.as_ref(), key.as_ref());
     }
 
@@ -467,9 +470,9 @@ mod tests {
         let b64 = key.to_base64();
 
         // Decode multiple times, should get same result
-        let decoded1 = Key::from_base64(&b64).unwrap();
-        let decoded2 = Key::from_base64(&b64).unwrap();
-        let decoded3 = Key::from_base64(&b64).unwrap();
+        let decoded1 = Key::try_from(b64.as_str()).unwrap();
+        let decoded2 = Key::try_from(b64.as_str()).unwrap();
+        let decoded3 = Key::try_from(b64.as_str()).unwrap();
 
         assert_eq!(decoded1.as_ref(), key.as_ref());
         assert_eq!(decoded2.as_ref(), key.as_ref());
