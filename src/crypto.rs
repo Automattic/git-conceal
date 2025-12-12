@@ -65,7 +65,7 @@ pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     let mut iv = [0u8; IV_SIZE];
     iv.copy_from_slice(&hash[..IV_SIZE]);
 
-    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), &iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_ref().into(), &iv.into());
     let mut buffer = plaintext.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -134,7 +134,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     })?;
 
     // Decrypt the data
-    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_ref().into(), iv.into());
     let mut buffer = encrypted_data.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -150,7 +150,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
 /// Returns an error if HKDF expansion fails (should never happen with fixed output size,
 /// but handled for completeness).
 fn derive_hmac_key(encryption_key: &key::Key) -> Result<[u8; key::Key::KEY_SIZE]> {
-    let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
+    let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_ref());
     let mut hmac_key = [0u8; key::Key::KEY_SIZE];
     kdf.expand(b"git-conceal-hmac", &mut hmac_key)
         // `hkdf::InvalidLength` doesn't implement `std::error::Error` so we can't use `.context` and have to use `.map_err` instead

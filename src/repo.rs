@@ -195,7 +195,7 @@ impl Repo {
         let key_file = self.key_file_path()?;
 
         // Write the key as raw bytes to the file
-        fs::write(&key_file, key.as_bytes())
+        fs::write(&key_file, key.as_ref())
             .with_context(|| format!("Failed to write key file: {}", key_file.display()))?;
 
         // Set secure file permissions (read/write for owner only)
@@ -567,7 +567,7 @@ mod tests {
         let key = key::Key::generate().unwrap();
         repo.store_key(&key).unwrap();
         let loaded_key = repo.load_key().unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
 
     #[test]
@@ -588,10 +588,10 @@ mod tests {
         let key2 = key::Key::generate().unwrap();
 
         repo.store_key(&key1).unwrap();
-        assert_eq!(repo.load_key().unwrap().as_bytes(), key1.as_bytes());
+        assert_eq!(repo.load_key().unwrap().as_ref(), key1.as_ref());
 
         repo.store_key(&key2).unwrap();
-        assert_eq!(repo.load_key().unwrap().as_bytes(), key2.as_bytes());
+        assert_eq!(repo.load_key().unwrap().as_ref(), key2.as_ref());
     }
 
     #[test]

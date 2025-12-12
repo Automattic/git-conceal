@@ -25,14 +25,6 @@ impl Key {
         Self { bytes }
     }
 
-    /// Get a reference to the underlying key bytes
-    ///
-    /// This is primarily used for cryptographic operations that need direct access
-    /// to the raw key material.
-    pub fn as_bytes(&self) -> &[u8; Self::KEY_SIZE] {
-        &self.bytes
-    }
-
     /// Read encryption key from a file (raw binary format, 32 bytes)
     pub fn from_file(file_path: &Path) -> Result<Self> {
         let key_bytes = fs::read(file_path)
@@ -100,6 +92,10 @@ impl Key {
     }
 }
 
+/// Get a reference to the underlying key bytes
+///
+/// This is primarily used for cryptographic operations that need direct access
+/// to the raw key material.
 impl AsRef<[u8; Self::KEY_SIZE]> for Key {
     fn as_ref(&self) -> &[u8; Self::KEY_SIZE] {
         &self.bytes
@@ -151,7 +147,7 @@ mod tests {
     #[test]
     fn test_from_bytes() {
         let key = Key::from_bytes(TEST_KEY_BYTES);
-        assert_eq!(key.as_bytes(), &TEST_KEY_BYTES);
+        assert_eq!(key.as_ref(), &TEST_KEY_BYTES);
     }
 
     #[test]
@@ -160,11 +156,11 @@ mod tests {
         let key2 = Key::generate().unwrap();
 
         // Keys should be the correct size
-        assert_eq!(key1.as_bytes().len(), Key::KEY_SIZE);
-        assert_eq!(key2.as_bytes().len(), Key::KEY_SIZE);
+        assert_eq!(key1.as_ref().len(), Key::KEY_SIZE);
+        assert_eq!(key2.as_ref().len(), Key::KEY_SIZE);
 
         // Keys should be different (very unlikely to be the same)
-        assert_ne!(key1.as_bytes(), key2.as_bytes());
+        assert_ne!(key1.as_ref(), key2.as_ref());
     }
 
     #[test]
@@ -184,7 +180,7 @@ mod tests {
         let b64 = key.to_base64();
 
         let decoded_key = Key::from_base64(&b64).unwrap();
-        assert_eq!(decoded_key.as_bytes(), key.as_bytes());
+        assert_eq!(decoded_key.as_ref(), key.as_ref());
     }
 
     #[test]
@@ -193,7 +189,7 @@ mod tests {
         let b64 = original_key.to_base64();
         let decoded_key = Key::from_base64(&b64).unwrap();
 
-        assert_eq!(original_key.as_bytes(), decoded_key.as_bytes());
+        assert_eq!(original_key.as_ref(), decoded_key.as_ref());
     }
 
     #[test]
@@ -228,11 +224,11 @@ mod tests {
 
         // Test with leading/trailing whitespace (should be automatically trimmed)
         let decoded_key = Key::from_base64(&format!("  {}  ", b64)).unwrap();
-        assert_eq!(decoded_key.as_bytes(), key.as_bytes());
+        assert_eq!(decoded_key.as_ref(), key.as_ref());
 
         // Test with newlines and tabs
         let decoded_key2 = Key::from_base64(&format!("\n\t{}\n\t", b64)).unwrap();
-        assert_eq!(decoded_key2.as_bytes(), key.as_bytes());
+        assert_eq!(decoded_key2.as_ref(), key.as_ref());
     }
 
     #[test]
@@ -241,10 +237,10 @@ mod tests {
         let key_file = temp_dir.path().join("test.key");
 
         let key = test_key();
-        fs::write(&key_file, key.as_bytes()).unwrap();
+        fs::write(&key_file, key.as_ref()).unwrap();
 
         let loaded_key = Key::from_file(&key_file).unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
 
     #[test]
@@ -312,7 +308,7 @@ mod tests {
         }
 
         let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
 
         // Clean up
         unsafe {
@@ -337,7 +333,7 @@ mod tests {
         }
 
         let loaded_key = Key::read_from_source("env:TEST_KEY_VAR").unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
 
         // Clean up
         unsafe {
@@ -381,7 +377,7 @@ mod tests {
         let key = test_key();
         let b64 = key.to_base64();
         let loaded_key = Key::read_from_source(&b64).unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
 
     // Note: Testing stdin reading is complex in unit tests as it requires
@@ -400,9 +396,9 @@ mod tests {
     }
 
     #[test]
-    fn test_as_bytes() {
+    fn test_as_ref() {
         let key = test_key();
-        let bytes = key.as_bytes();
+        let bytes = key.as_ref();
 
         assert_eq!(bytes.len(), Key::KEY_SIZE);
         assert_eq!(bytes, &TEST_KEY_BYTES);
@@ -413,7 +409,7 @@ mod tests {
         let key1 = test_key();
         let key2 = key1.clone();
 
-        assert_eq!(key1.as_bytes(), key2.as_bytes());
+        assert_eq!(key1.as_ref(), key2.as_ref());
         // Verify they are independent (modify one, other unchanged)
         // Since Key doesn't have interior mutability, we can't easily test this,
         // but clone should work correctly
@@ -429,7 +425,7 @@ mod tests {
         // All keys should be unique
         for i in 0..keys.len() {
             for j in (i + 1)..keys.len() {
-                assert_ne!(keys[i].as_bytes(), keys[j].as_bytes());
+                assert_ne!(keys[i].as_ref(), keys[j].as_ref());
             }
         }
     }
@@ -449,7 +445,7 @@ mod tests {
         let key1 = Key::from_bytes(TEST_KEY_BYTES);
         let key2 = Key::from_bytes(TEST_KEY_BYTES);
 
-        assert_eq!(key1.as_bytes(), key2.as_bytes());
+        assert_eq!(key1.as_ref(), key2.as_ref());
     }
 
     #[test]
@@ -459,7 +455,7 @@ mod tests {
         different_bytes[0] ^= 0xFF; // Flip first byte
         let key2 = Key::from_bytes(different_bytes);
 
-        assert_ne!(key1.as_bytes(), key2.as_bytes());
+        assert_ne!(key1.as_ref(), key2.as_ref());
     }
 
     #[test]
@@ -472,8 +468,8 @@ mod tests {
         let decoded2 = Key::from_base64(&b64).unwrap();
         let decoded3 = Key::from_base64(&b64).unwrap();
 
-        assert_eq!(decoded1.as_bytes(), key.as_bytes());
-        assert_eq!(decoded2.as_bytes(), key.as_bytes());
-        assert_eq!(decoded3.as_bytes(), key.as_bytes());
+        assert_eq!(decoded1.as_ref(), key.as_ref());
+        assert_eq!(decoded2.as_ref(), key.as_ref());
+        assert_eq!(decoded3.as_ref(), key.as_ref());
     }
 }

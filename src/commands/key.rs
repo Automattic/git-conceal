@@ -17,7 +17,7 @@ pub fn cmd_key_show(raw: bool) -> Result<()> {
     let key = repo.load_key().context("Failed to load encryption key")?;
     if raw {
         std::io::stdout()
-            .write_all(key.as_bytes())
+            .write_all(key.as_ref())
             .context("Failed to write key to stdout")?;
     } else {
         println!("{}", key.to_base64());
