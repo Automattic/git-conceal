@@ -22,7 +22,7 @@ impl Key {
     pub fn from_file(file_path: &Path) -> Result<Self> {
         let key_bytes = fs::read(file_path)
             .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
-        bytes_to_key(key_bytes)
+        Key::try_from(key_bytes.as_slice())
             .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
     }
 
@@ -45,7 +45,7 @@ impl Key {
         let key_bytes = general_purpose::STANDARD
             .decode(key_b64.trim())
             .context("Failed to decode base64 key")?;
-        bytes_to_key(key_bytes).context("Invalid key size from base64")
+        Key::try_from(key_bytes.as_slice()).context("Invalid size for key decoded from base64")
     }
 
     /// Export key as base64 string
@@ -68,7 +68,7 @@ impl Key {
             std::io::stdin()
                 .read_to_end(&mut key_bytes)
                 .context("Failed to read key from stdin")?;
-            bytes_to_key(key_bytes).context("Invalid key size from stdin")
+            Key::try_from(key_bytes.as_slice())
         } else if let Some(env_var) = key_source.strip_prefix("env:") {
             // Read from environment variable (base64 encoded, format: env:VARNAME)
             if env_var.is_empty() {
@@ -104,21 +104,19 @@ impl From<[u8; Self::KEY_SIZE]> for Key {
     }
 }
 
-// === Private Helper functions === //
-
-/// Convert a byte vector to a key array, validating the length
-fn bytes_to_key(key_bytes: Vec<u8>) -> Result<Key> {
-    if key_bytes.len() != Key::KEY_SIZE {
-        anyhow::bail!(
-            "Invalid key size: expected {} bytes, got {}",
-            Key::KEY_SIZE,
-            key_bytes.len()
-        );
+/// Try to convert a byte slice of arbitrary length to a Key, validating the length is correct
+impl TryFrom<&[u8]> for Key {
+    type Error = anyhow::Error;
+    fn try_from(slice: &[u8]) -> Result<Key> {
+        let key_bytes: [u8; Key::KEY_SIZE] = slice.try_into().with_context(|| {
+            format!(
+                "Invalid key size: expected {} bytes, got {}",
+                Key::KEY_SIZE,
+                slice.len()
+            )
+        })?;
+        Ok(Key::from(key_bytes))
     }
-
-    let mut bytes = [0u8; Key::KEY_SIZE];
-    bytes.copy_from_slice(&key_bytes);
-    Ok(Key::from(bytes))
 }
 
 // === Tests === //
