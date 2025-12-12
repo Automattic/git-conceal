@@ -181,7 +181,7 @@ impl Repo {
     /// Load the encryption key from the key file in .git directory
     pub fn load_key(&self) -> Result<key::Key> {
         let key_file = self.key_file_path()?;
-        key::Key::from_file(&key_file).with_context(|| {
+        key::Key::try_from(key_file.as_path()).with_context(|| {
             format!(
                 "Encryption key not found at {}. Run '{} unlock' first.",
                 key_file.display(),

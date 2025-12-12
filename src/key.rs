@@ -18,14 +18,6 @@ impl Key {
     /// Size of the encryption key in bytes (256 bits for AES-256)
     pub const KEY_SIZE: usize = 32;
 
-    /// Read encryption key from a file (raw binary format, 32 bytes)
-    pub fn from_file(file_path: &Path) -> Result<Self> {
-        let key_bytes = fs::read(file_path)
-            .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
-        Key::try_from(key_bytes.as_slice())
-            .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
-    }
-
     /// Generate a new random encryption key
     ///
     /// # Errors
@@ -116,6 +108,17 @@ impl TryFrom<&[u8]> for Key {
             )
         })?;
         Ok(Key::from(key_bytes))
+    }
+}
+
+/// Read encryption key from a file (raw binary format, 32 bytes)
+impl TryFrom<&Path> for Key {
+    type Error = anyhow::Error;
+    fn try_from(file_path: &Path) -> Result<Self> {
+        let key_bytes = fs::read(file_path)
+            .with_context(|| format!("Failed to read key from file: {}", file_path.display()))?;
+        Key::try_from(key_bytes.as_slice())
+            .with_context(|| format!("Invalid key size in file: {}", file_path.display()))
     }
 }
 
@@ -239,13 +242,13 @@ mod tests {
         let key = test_key();
         fs::write(&key_file, key.as_ref()).unwrap();
 
-        let loaded_key = Key::from_file(&key_file).unwrap();
+        let loaded_key = Key::try_from(key_file.as_path()).unwrap();
         assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
 
     #[test]
     fn test_from_file_nonexistent() {
-        let result = Key::from_file(Path::new("/nonexistent/path/key.bin"));
+        let result = Key::try_from(Path::new("/nonexistent/path/key.bin"));
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -261,7 +264,7 @@ mod tests {
         // Write a file with wrong size
         fs::write(&key_file, vec![0u8; 16]).unwrap();
 
-        let result = Key::from_file(&key_file);
+        let result = Key::try_from(key_file.as_path());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
     }
@@ -273,7 +276,7 @@ mod tests {
 
         fs::write(&key_file, vec![]).unwrap();
 
-        let result = Key::from_file(&key_file);
+        let result = Key::try_from(key_file.as_path());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
     }
@@ -286,7 +289,7 @@ mod tests {
         // Write a file with too many bytes
         fs::write(&key_file, vec![0u8; 64]).unwrap();
 
-        let result = Key::from_file(&key_file);
+        let result = Key::try_from(key_file.as_path());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid key size"));
     }
