@@ -1,5 +1,5 @@
 use crate::crypto;
-use crate::key;
+use crate::key::Key;
 use crate::repo;
 use anyhow::{Context, Result};
 use std::fs;
@@ -68,7 +68,7 @@ fn read_stdin() -> Result<Vec<u8>> {
 
 /// Apply clean filter logic: encrypt plaintext, pass through encrypted data unchanged
 /// This is idempotent: clean(clean(data)) == clean(data)
-fn apply_clean_filter(key: &key::Key, input: &[u8]) -> Result<Vec<u8>> {
+fn apply_clean_filter(key: &Key, input: &[u8]) -> Result<Vec<u8>> {
     // Check if input is already encrypted using magic header
     if crypto::is_encrypted(input) {
         // Input is already encrypted, pass through unchanged
@@ -82,7 +82,7 @@ fn apply_clean_filter(key: &key::Key, input: &[u8]) -> Result<Vec<u8>> {
 
 /// Apply smudge filter logic: decrypt encrypted data, pass through plaintext unchanged
 /// This is idempotent: smudge(smudge(data)) == smudge(data)
-fn apply_smudge_filter(key: &key::Key, input: &[u8]) -> Result<Vec<u8>> {
+fn apply_smudge_filter(key: &Key, input: &[u8]) -> Result<Vec<u8>> {
     // Check if input is encrypted using magic header
     if !crypto::is_encrypted(input) {
         // Input is already plaintext, pass through unchanged
@@ -99,16 +99,15 @@ fn apply_smudge_filter(key: &key::Key, input: &[u8]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key;
 
     /// Constant test key for deterministic testing
-    fn test_key() -> key::Key {
-        const TEST_KEY_BYTES: [u8; key::Key::KEY_SIZE] = [
+    fn test_key() -> Key {
+        const TEST_KEY_BYTES: [u8; Key::KEY_SIZE] = [
             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
             0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67,
             0x89, 0xab, 0xcd, 0xef,
         ];
-        key::Key::from(TEST_KEY_BYTES)
+        Key::from(TEST_KEY_BYTES)
     }
 
     #[test]
@@ -263,7 +262,7 @@ mod tests {
     #[test]
     fn test_apply_smudge_filter_wrong_key_fails() {
         let key1 = test_key();
-        let key2 = key::Key::generate().unwrap();
+        let key2 = Key::generate().unwrap();
         let plaintext = b"Secret data";
 
         let encrypted = crypto::encrypt(&key1, plaintext).unwrap();

@@ -185,7 +185,10 @@ mod tests {
         let short_b64 = "dGVzdC1rZXktMTYtYnl0ZXM="; // "test-key-16-bytes"
         let result = Key::try_from(short_b64);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Invalid size for key decoded from base64");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Invalid size for key decoded from base64"
+        );
     }
 
     #[test]

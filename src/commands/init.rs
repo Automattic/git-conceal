@@ -1,4 +1,4 @@
-use crate::key;
+use crate::key::Key;
 use crate::repo;
 use crate::BINARY_NAME;
 use anyhow::{Context, Result};
@@ -19,7 +19,7 @@ pub fn cmd_init() -> Result<()> {
     }
 
     // Generate a new key
-    let key = key::Key::generate().context("Failed to generate encryption key")?;
+    let key = Key::generate().context("Failed to generate encryption key")?;
     repo.store_key(&key).context("Failed to store key file")?;
 
     // Set up Git filters
@@ -33,7 +33,7 @@ pub fn cmd_init() -> Result<()> {
 }
 
 /// Format initialization instructions for display to the user
-fn init_instructions(key: key::Key) -> String {
+fn init_instructions(key: Key) -> String {
     format!(
         indoc! {r#"
             Repository initialized for {bin_name}

@@ -1,4 +1,4 @@
-use crate::key;
+use crate::key::Key;
 use crate::repo;
 use crate::BINARY_NAME;
 use anyhow::{Context, Result};
@@ -39,7 +39,7 @@ pub fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
         anyhow::bail!("Key rotation cancelled.");
     }
 
-    let new_key = key::Key::generate().context("Failed to generate new encryption key")?;
+    let new_key = Key::generate().context("Failed to generate new encryption key")?;
     repo.store_key(&new_key)
         .context("Failed to store new key")?;
 
@@ -99,7 +99,7 @@ fn rotate_confirmation_prompt() -> String {
 }
 
 /// Format key rotation instructions for display to the user
-fn rotate_instructions(key: key::Key) -> String {
+fn rotate_instructions(key: Key) -> String {
     format!(
         indoc! {r#"
             Key rotation completed successfully
