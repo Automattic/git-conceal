@@ -40,41 +40,7 @@ impl Repo {
     pub fn discover() -> Result<Self> {
         let start_path = std::env::current_dir().context("Failed to get current directory")?;
         let git_repo = Repository::discover(start_path).context("Not a git repository")?;
-        Self::from_repository(git_repo)
-    }
-
-    /// Create a Repo instance from a git2 Repository
-    ///
-    /// Validates that the repository is not bare and has a working directory.
-    ///
-    /// # Errors
-    /// Returns an error if the repository is bare or has no working directory.
-    fn from_repository(git_repo: Repository) -> Result<Self> {
-        // Reject bare repositories - this tool needs a working directory
-        if git_repo.is_bare() {
-            anyhow::bail!(
-                "Bare repositories are not supported. \
-                This tool encrypts/decrypts files in the working directory, \
-                which bare repositories don't have. \
-                Please use a non-bare repository with a checked-out working tree."
-            );
-        }
-
-        // Get the working directory root
-        let workdir = git_repo
-            .workdir()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Repository has no working directory. \
-                    This tool requires a non-bare repository with a checked-out working tree."
-                )
-            })?
-            .to_path_buf();
-
-        Ok(Self {
-            workdir,
-            git_repo: Rc::new(git_repo),
-        })
+        Self::try_from(git_repo)
     }
 
     /// Get the repository working directory path
@@ -458,6 +424,43 @@ impl Repo {
     }
 }
 
+/// Create a Repo instance from a git2 Repository
+///
+/// Validates that the repository is not bare and has a working directory.
+///
+/// # Errors
+/// Returns an error if the repository is bare or has no working directory.
+impl TryFrom<Repository> for Repo {
+    type Error = anyhow::Error;
+
+    fn try_from(git_repo: Repository) -> Result<Self> {
+        // Reject bare repositories - this tool needs a working directory
+        if git_repo.is_bare() {
+            anyhow::bail!(
+                "Bare repositories are not supported. \
+                This tool encrypts/decrypts files in the working directory, \
+                which bare repositories don't have. \
+                Please use a non-bare repository with a checked-out working tree."
+            );
+        }
+
+        // Get the working directory root
+        let workdir = git_repo
+            .workdir()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Repository has no working directory. \
+                    This tool requires a non-bare repository with a checked-out working tree."
+                )
+            })?
+            .to_path_buf();
+
+        Ok(Self {
+            workdir,
+            git_repo: Rc::new(git_repo),
+        })
+    }
+}
 // === Helper types and functions === //
 
 /// Iterator over filtered files in the git index
@@ -540,7 +543,7 @@ mod tests {
 
         // Create Repo instance from the repository
         let repository = Repository::open(repo_path).context("Failed to open git repository")?;
-        let repo = Repo::from_repository(repository)?;
+        let repo = Repo::try_from(repository)?;
 
         Ok((temp_dir, repo))
     }
