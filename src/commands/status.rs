@@ -1,4 +1,4 @@
-use crate::repo;
+use crate::repo::Repo;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json;
@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 pub fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
+    let repo = Repo::discover()?;
 
     if files.is_empty() {
         // Show repository status

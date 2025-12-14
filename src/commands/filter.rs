@@ -1,6 +1,6 @@
 use crate::crypto;
 use crate::key::Key;
-use crate::repo;
+use crate::repo::Repo;
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 /// Git clean filter: encrypt data from stdin and write to stdout
 /// This filter is idempotent: clean(clean(data)) == clean(data)
 /// If the input is already encrypted (has magic header), it passes through unchanged.
-pub fn clean_filter(repo: &repo::Repo) -> Result<()> {
+pub fn clean_filter(repo: &Repo) -> Result<()> {
     let key = repo.load_key().context("Failed to load encryption key")?;
     let input = read_stdin()?;
     let output = apply_clean_filter(&key, &input)?;
@@ -21,7 +21,7 @@ pub fn clean_filter(repo: &repo::Repo) -> Result<()> {
 /// Git smudge filter: decrypt data from stdin and write to stdout
 /// This filter is idempotent: smudge(smudge(data)) == smudge(data)
 /// If the input is already plaintext (no magic header), it passes through unchanged.
-pub fn smudge_filter(repo: &repo::Repo) -> Result<()> {
+pub fn smudge_filter(repo: &Repo) -> Result<()> {
     let key = repo.load_key().context("Failed to load encryption key")?;
     let input = read_stdin()?;
     let output = apply_smudge_filter(&key, &input)?;
@@ -34,7 +34,7 @@ pub fn smudge_filter(repo: &repo::Repo) -> Result<()> {
 /// Git diff textconv: decrypt file and write to stdout
 /// Used by git diff to show decrypted content of encrypted files.
 /// Takes a filename as argument (provided by git when using textconv).
-pub fn diff_textconv(repo: &repo::Repo, filename: &str) -> Result<()> {
+pub fn diff_textconv(repo: &Repo, filename: &str) -> Result<()> {
     let key = repo.load_key().context("Failed to load encryption key")?;
 
     // Read file
