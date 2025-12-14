@@ -26,14 +26,14 @@ pub fn cmd_init() -> Result<()> {
     repo.setup_filters()
         .context("Failed to set up Git filters")?;
 
-    let instructions = init_instructions(key);
+    let instructions = init_instructions(&key);
     println!("{}", instructions);
 
     Ok(())
 }
 
 /// Format initialization instructions for display to the user
-fn init_instructions(key: Key) -> String {
+fn init_instructions(key: &Key) -> String {
     format!(
         indoc! {r#"
             Repository initialized for {bin_name}

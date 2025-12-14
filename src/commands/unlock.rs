@@ -3,7 +3,7 @@ use crate::repo;
 use anyhow::{Context, Result};
 use std::io::Read;
 
-pub fn cmd_unlock(key_source: String) -> Result<()> {
+pub fn cmd_unlock(key_source: &str) -> Result<()> {
     let repo = repo::Repo::discover()?;
 
     // Check if any filtered files have local modifications
@@ -17,7 +17,7 @@ pub fn cmd_unlock(key_source: String) -> Result<()> {
         anyhow::bail!("Repository has dirty encrypted files");
     }
 
-    let key = read_from_source(&key_source)?;
+    let key = read_from_source(key_source)?;
 
     // Store key in key file
     repo.store_key(&key).context("Failed to store key file")?;

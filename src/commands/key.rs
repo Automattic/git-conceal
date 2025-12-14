@@ -49,7 +49,7 @@ pub fn cmd_key_rotate(skip_confirmation: bool) -> Result<()> {
         .context("Failed to re-normalize encrypted files")?;
 
     // Print follow-up instructions for the user
-    let instructions = rotate_instructions(new_key);
+    let instructions = rotate_instructions(&new_key);
     println!("{}", instructions);
 
     Ok(())
@@ -99,7 +99,7 @@ fn rotate_confirmation_prompt() -> String {
 }
 
 /// Format key rotation instructions for display to the user
-fn rotate_instructions(key: Key) -> String {
+fn rotate_instructions(key: &Key) -> String {
     format!(
         indoc! {r#"
             Key rotation completed successfully
