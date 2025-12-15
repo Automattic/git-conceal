@@ -9,7 +9,7 @@ use std::path::Path;
 /// This type wraps the raw key bytes and provides a safe API for key operations.
 /// (The underlying raw bytes should only be needed when calling low-level cryptographic operations.)
 #[must_use]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Key {
     bytes: [u8; Self::KEY_SIZE],
 }
@@ -182,7 +182,7 @@ mod tests {
         fs::write(&key_file, key.as_ref()).unwrap();
 
         let loaded_key = Key::try_from(key_file.as_path()).unwrap();
-        assert_eq!(loaded_key.as_ref(), key.as_ref());
+        assert_eq!(loaded_key, key);
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod tests {
         let b64 = key.to_string();
 
         let decoded_key = Key::try_from(b64.as_str()).unwrap();
-        assert_eq!(decoded_key.as_ref(), key.as_ref());
+        assert_eq!(decoded_key, key);
     }
 
     #[test]
@@ -277,11 +277,11 @@ mod tests {
 
         // Test with leading/trailing whitespace (should be automatically trimmed)
         let decoded_key = Key::try_from(format!("  {}  ", b64).as_str()).unwrap();
-        assert_eq!(decoded_key.as_ref(), key.as_ref());
+        assert_eq!(decoded_key, key);
 
         // Test with newlines and tabs
         let decoded_key2 = Key::try_from(format!("\n\t{}\n\t", b64).as_str()).unwrap();
-        assert_eq!(decoded_key2.as_ref(), key.as_ref());
+        assert_eq!(decoded_key2, key);
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
         let b64 = original_key.to_string();
         let decoded_key = Key::try_from(b64.as_str()).unwrap();
 
-        assert_eq!(original_key.as_ref(), decoded_key.as_ref());
+        assert_eq!(original_key, decoded_key);
     }
 
     #[test]
@@ -324,9 +324,9 @@ mod tests {
         let decoded2 = Key::try_from(b64.as_str()).unwrap();
         let decoded3 = Key::try_from(b64.as_str()).unwrap();
 
-        assert_eq!(decoded1.as_ref(), key.as_ref());
-        assert_eq!(decoded2.as_ref(), key.as_ref());
-        assert_eq!(decoded3.as_ref(), key.as_ref());
+        assert_eq!(decoded1, key);
+        assert_eq!(decoded2, key);
+        assert_eq!(decoded3, key);
     }
 
     #[test]
@@ -334,6 +334,7 @@ mod tests {
         let key1 = Key::from(TEST_KEY_BYTES);
         let key2 = Key::from(TEST_KEY_BYTES);
 
+        assert_eq!(key1, key2);
         assert_eq!(key1.as_ref(), key2.as_ref());
     }
 
@@ -344,6 +345,7 @@ mod tests {
         different_bytes[0] ^= 0xFF; // Flip first byte
         let key2 = Key::from(different_bytes);
 
+        assert_ne!(key1, key2);
         assert_ne!(key1.as_ref(), key2.as_ref());
     }
 }
