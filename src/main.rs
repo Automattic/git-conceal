@@ -55,7 +55,7 @@ enum Commands {
                          - 'env:VARNAME': read the base64-encoded key from the given environment variable (recommended on CI)\n\
                          - '-': read the raw binary key from stdin (expects raw binary, 32 bytes as input)"
         )]
-        key_source: String,
+        key_source: commands::unlock::KeySource,
     },
     // Lock
     #[command(
@@ -143,7 +143,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init => commands::init::cmd_init(),
-        Commands::Unlock { key_source } => commands::unlock::cmd_unlock(&key_source),
+        Commands::Unlock { key_source } => commands::unlock::cmd_unlock(key_source),
         Commands::Lock { force } => commands::lock::cmd_lock(force),
         Commands::Status { files, json } => commands::status::cmd_status(&files, json),
         Commands::Key { key_cmd } => match key_cmd {
