@@ -1,4 +1,4 @@
-use crate::key;
+use crate::key::Key;
 use aes::Aes256;
 use anyhow::{Context, Result};
 use ctr::cipher::{KeyIvInit, StreamCipher};
@@ -55,7 +55,7 @@ pub fn is_encrypted(data: &[u8]) -> bool {
 ///
 /// The HMAC is computed over: magic + version + IV + encrypted data
 /// and is used to verify the decryption key is correct.
-pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
+pub fn encrypt(key: &Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     // Derive IV from SHA-256 hash of plaintext (like git-crypt uses HMAC-SHA1)
     let mut hasher = Sha256::new();
     hasher.update(plaintext);
@@ -65,7 +65,7 @@ pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
     let mut iv = [0u8; IV_SIZE];
     iv.copy_from_slice(&hash[..IV_SIZE]);
 
-    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), &iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_ref().into(), &iv.into());
     let mut buffer = plaintext.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -89,7 +89,7 @@ pub fn encrypt(key: &key::Key, plaintext: &[u8]) -> Result<Vec<u8>> {
 
 /// Decrypt data using AES-256-CTR
 /// Verifies HMAC before decrypting to ensure the correct key is used.
-pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt(key: &Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     if ciphertext.len() < MIN_ENCRYPTED_SIZE {
         anyhow::bail!("Ciphertext too short to contain header, IV, and HMAC");
     }
@@ -134,7 +134,7 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
     })?;
 
     // Decrypt the data
-    let mut cipher = Ctr128BE::<Aes256>::new(key.as_bytes().into(), iv.into());
+    let mut cipher = Ctr128BE::<Aes256>::new(key.as_ref().into(), iv.into());
     let mut buffer = encrypted_data.to_vec();
     cipher.apply_keystream(&mut buffer);
 
@@ -149,9 +149,9 @@ pub fn decrypt(key: &key::Key, ciphertext: &[u8]) -> Result<Vec<u8>> {
 /// # Errors
 /// Returns an error if HKDF expansion fails (should never happen with fixed output size,
 /// but handled for completeness).
-fn derive_hmac_key(encryption_key: &key::Key) -> Result<[u8; key::Key::KEY_SIZE]> {
-    let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_bytes());
-    let mut hmac_key = [0u8; key::Key::KEY_SIZE];
+fn derive_hmac_key(encryption_key: &Key) -> Result<[u8; Key::KEY_SIZE]> {
+    let kdf = Hkdf::<Sha256>::new(None, encryption_key.as_ref());
+    let mut hmac_key = [0u8; Key::KEY_SIZE];
     kdf.expand(b"git-conceal-hmac", &mut hmac_key)
         // `hkdf::InvalidLength` doesn't implement `std::error::Error` so we can't use `.context` and have to use `.map_err` instead
         .map_err(|_| anyhow::anyhow!("HKDF expansion failed (output length mismatch)"))?;
@@ -165,33 +165,33 @@ mod tests {
     use super::*;
 
     /// Test key for deterministic testing
-    fn test_key1() -> key::Key {
-        const TEST_KEY1_BYTES: [u8; key::Key::KEY_SIZE] = [
+    fn test_key1() -> Key {
+        const TEST_KEY1_BYTES: [u8; Key::KEY_SIZE] = [
             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
             0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67,
             0x89, 0xab, 0xcd, 0xef,
         ];
-        key::Key::from_bytes(TEST_KEY1_BYTES)
+        Key::from(TEST_KEY1_BYTES)
     }
 
     /// Second test key for tests requiring different keys
-    fn test_key2() -> key::Key {
-        const TEST_KEY2_BYTES: [u8; key::Key::KEY_SIZE] = [
+    fn test_key2() -> Key {
+        const TEST_KEY2_BYTES: [u8; Key::KEY_SIZE] = [
             0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54,
             0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98,
             0x76, 0x54, 0x32, 0x10,
         ];
-        key::Key::from_bytes(TEST_KEY2_BYTES)
+        Key::from(TEST_KEY2_BYTES)
     }
 
     #[test]
     fn test_generate_key_bytes() {
-        let key1_bytes = generate_key_bytes(key::Key::KEY_SIZE).unwrap();
-        let key2_bytes = generate_key_bytes(key::Key::KEY_SIZE).unwrap();
+        let key1_bytes = generate_key_bytes(Key::KEY_SIZE).unwrap();
+        let key2_bytes = generate_key_bytes(Key::KEY_SIZE).unwrap();
 
         // Keys should be the correct size
-        assert_eq!(key1_bytes.len(), key::Key::KEY_SIZE);
-        assert_eq!(key2_bytes.len(), key::Key::KEY_SIZE);
+        assert_eq!(key1_bytes.len(), Key::KEY_SIZE);
+        assert_eq!(key2_bytes.len(), Key::KEY_SIZE);
 
         // Keys should be different (very unlikely to be the same)
         assert_ne!(key1_bytes, key2_bytes);

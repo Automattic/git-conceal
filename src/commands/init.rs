@@ -1,4 +1,4 @@
-use crate::key;
+use crate::key::Key;
 use crate::repo;
 use crate::BINARY_NAME;
 use anyhow::{Context, Result};
@@ -19,37 +19,36 @@ pub fn cmd_init() -> Result<()> {
     }
 
     // Generate a new key
-    let key = key::Key::generate().context("Failed to generate encryption key")?;
+    let key = Key::generate().context("Failed to generate encryption key")?;
     repo.store_key(&key).context("Failed to store key file")?;
 
     // Set up Git filters
     repo.setup_filters()
         .context("Failed to set up Git filters")?;
 
-    let key_b64 = key.to_base64();
-    let instructions = init_instructions(&key_b64);
+    let instructions = init_instructions(&key);
     println!("{}", instructions);
 
     Ok(())
 }
 
 /// Format initialization instructions for display to the user
-fn init_instructions(key_b64: &str) -> String {
+fn init_instructions(key: &Key) -> String {
     format!(
         indoc! {r#"
             Repository initialized for {bin_name}
 
             Your encryption key (base64, save this securely!):
-            {key_b64}
+            {key}
 
             Once you share this key with users you trust, they can unlock their working copy using one of these methods:
               - From base64-encoded key passed directly as argument:
-                {bin_name} unlock "{key_b64}"
+                {bin_name} unlock "{key}"
               - From environment variable (base64):
-                export GIT_CONCEAL_SECRET_KEY='{key_b64}'
+                export GIT_CONCEAL_SECRET_KEY='{key}'
                 {bin_name} unlock env:GIT_CONCEAL_SECRET_KEY
               - From stdin (raw binary, 32 bytes):
-                echo '{key_b64}' | base64 -d | {bin_name} unlock -
+                echo '{key}' | base64 -d | {bin_name} unlock -
                 {bin_name} unlock - < /path/to/raw-binary-key.bin
 
             To start adding files to be encrypted in this repository:
@@ -63,7 +62,7 @@ fn init_instructions(key_b64: &str) -> String {
               - Run '{bin_name} status' to validate the list of files that are encrypted.
         "#},
         bin_name = BINARY_NAME,
-        key_b64 = key_b64,
+        key = key,
         filter = repo::FILTER_NAME,
         diff = repo::DIFF_NAME,
     )

@@ -1,5 +1,5 @@
 use crate::fs_helpers;
-use crate::key;
+use crate::key::Key;
 use crate::BINARY_NAME;
 use anyhow::{Context, Result};
 use git2::Repository;
@@ -40,41 +40,7 @@ impl Repo {
     pub fn discover() -> Result<Self> {
         let start_path = std::env::current_dir().context("Failed to get current directory")?;
         let git_repo = Repository::discover(start_path).context("Not a git repository")?;
-        Self::from_repository(git_repo)
-    }
-
-    /// Create a Repo instance from a git2 Repository
-    ///
-    /// Validates that the repository is not bare and has a working directory.
-    ///
-    /// # Errors
-    /// Returns an error if the repository is bare or has no working directory.
-    fn from_repository(git_repo: Repository) -> Result<Self> {
-        // Reject bare repositories - this tool needs a working directory
-        if git_repo.is_bare() {
-            anyhow::bail!(
-                "Bare repositories are not supported. \
-                This tool encrypts/decrypts files in the working directory, \
-                which bare repositories don't have. \
-                Please use a non-bare repository with a checked-out working tree."
-            );
-        }
-
-        // Get the working directory root
-        let workdir = git_repo
-            .workdir()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Repository has no working directory. \
-                    This tool requires a non-bare repository with a checked-out working tree."
-                )
-            })?
-            .to_path_buf();
-
-        Ok(Self {
-            workdir,
-            git_repo: Rc::new(git_repo),
-        })
+        Self::try_from(git_repo)
     }
 
     /// Get the repository working directory path
@@ -179,9 +145,9 @@ impl Repo {
     }
 
     /// Load the encryption key from the key file in .git directory
-    pub fn load_key(&self) -> Result<key::Key> {
+    pub fn load_key(&self) -> Result<Key> {
         let key_file = self.key_file_path()?;
-        key::Key::from_file(&key_file).with_context(|| {
+        Key::try_from(key_file.as_path()).with_context(|| {
             format!(
                 "Encryption key not found at {}. Run '{} unlock' first.",
                 key_file.display(),
@@ -191,11 +157,11 @@ impl Repo {
     }
 
     /// Store the encryption key in a file in the .git directory with secure permissions
-    pub fn store_key(&self, key: &key::Key) -> Result<()> {
+    pub fn store_key(&self, key: &Key) -> Result<()> {
         let key_file = self.key_file_path()?;
 
         // Write the key as raw bytes to the file
-        fs::write(&key_file, key.as_bytes())
+        fs::write(&key_file, key.as_ref())
             .with_context(|| format!("Failed to write key file: {}", key_file.display()))?;
 
         // Set secure file permissions (read/write for owner only)
@@ -458,6 +424,44 @@ impl Repo {
     }
 }
 
+/// Create a Repo instance from a git2 Repository
+///
+/// Validates that the repository is not bare and has a working directory.
+///
+/// # Errors
+/// Returns an error if the repository is bare or has no working directory.
+impl TryFrom<Repository> for Repo {
+    type Error = anyhow::Error;
+
+    fn try_from(git_repo: Repository) -> Result<Self> {
+        // Reject bare repositories - this tool needs a working directory
+        if git_repo.is_bare() {
+            anyhow::bail!(
+                "Bare repositories are not supported. \
+                This tool encrypts/decrypts files in the working directory, \
+                which bare repositories don't have. \
+                Please use a non-bare repository with a checked-out working tree."
+            );
+        }
+
+        // Get the working directory root
+        let workdir = git_repo
+            .workdir()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Repository has no working directory. \
+                    This tool requires a non-bare repository with a checked-out working tree."
+                )
+            })?
+            .to_path_buf();
+
+        Ok(Self {
+            workdir,
+            git_repo: Rc::new(git_repo),
+        })
+    }
+}
+
 // === Helper types and functions === //
 
 /// Iterator over filtered files in the git index
@@ -540,7 +544,7 @@ mod tests {
 
         // Create Repo instance from the repository
         let repository = Repository::open(repo_path).context("Failed to open git repository")?;
-        let repo = Repo::from_repository(repository)?;
+        let repo = Repo::try_from(repository)?;
 
         Ok((temp_dir, repo))
     }
@@ -564,10 +568,10 @@ mod tests {
     #[test]
     fn test_store_and_load_key() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate().unwrap();
+        let key = Key::generate().unwrap();
         repo.store_key(&key).unwrap();
         let loaded_key = repo.load_key().unwrap();
-        assert_eq!(loaded_key.as_bytes(), key.as_bytes());
+        assert_eq!(loaded_key.as_ref(), key.as_ref());
     }
 
     #[test]
@@ -584,14 +588,14 @@ mod tests {
     #[test]
     fn test_store_key_overwrites() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key1 = key::Key::generate().unwrap();
-        let key2 = key::Key::generate().unwrap();
+        let key1 = Key::generate().unwrap();
+        let key2 = Key::generate().unwrap();
 
         repo.store_key(&key1).unwrap();
-        assert_eq!(repo.load_key().unwrap().as_bytes(), key1.as_bytes());
+        assert_eq!(repo.load_key().unwrap().as_ref(), key1.as_ref());
 
         repo.store_key(&key2).unwrap();
-        assert_eq!(repo.load_key().unwrap().as_bytes(), key2.as_bytes());
+        assert_eq!(repo.load_key().unwrap().as_ref(), key2.as_ref());
     }
 
     #[test]
@@ -601,7 +605,7 @@ mod tests {
         // Initially should be locked
         assert!(!repo.is_unlocked().unwrap());
 
-        let key = key::Key::generate().unwrap();
+        let key = Key::generate().unwrap();
         repo.store_key(&key).unwrap();
 
         // Now should be unlocked
@@ -611,7 +615,7 @@ mod tests {
     #[test]
     fn test_remove_key() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate().unwrap();
+        let key = Key::generate().unwrap();
 
         // Store key
         repo.store_key(&key).unwrap();
@@ -870,13 +874,13 @@ mod tests {
     #[test]
     fn test_store_key_creates_file() {
         let (_temp_dir, repo) = setup_test_repo().unwrap();
-        let key = key::Key::generate().unwrap();
+        let key = Key::generate().unwrap();
 
         repo.store_key(&key).unwrap();
 
         let key_path = repo.key_file_path().unwrap();
         assert!(key_path.exists());
-        assert_eq!(fs::read(&key_path).unwrap().len(), key::Key::KEY_SIZE);
+        assert_eq!(fs::read(&key_path).unwrap().len(), Key::KEY_SIZE);
     }
 
     #[test]

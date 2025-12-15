@@ -1,12 +1,12 @@
-use crate::repo;
+use crate::repo::Repo;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json;
 use std::fmt;
 use std::path::PathBuf;
 
-pub fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
-    let repo = repo::Repo::discover()?;
+pub fn cmd_status<S: AsRef<str>>(files: &[S], json: bool) -> Result<()> {
+    let repo = Repo::discover()?;
 
     if files.is_empty() {
         // Show repository status
@@ -40,7 +40,7 @@ pub fn cmd_status(files: Vec<String>, json: bool) -> Result<()> {
         let file_statuses: Vec<FileStatus> = files
             .iter()
             .map(|file_str| {
-                let file_path = std::path::Path::new(file_str);
+                let file_path = std::path::Path::new(file_str.as_ref());
                 let is_filtered = repo.is_filtered_file(file_path)?;
                 Ok(FileStatus {
                     file: file_path.to_path_buf(),
