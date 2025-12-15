@@ -461,6 +461,7 @@ impl TryFrom<Repository> for Repo {
         })
     }
 }
+
 // === Helper types and functions === //
 
 /// Iterator over filtered files in the git index
