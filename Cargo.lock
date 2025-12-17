@@ -384,6 +384,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "indoc",
+ "owo-colors",
  "rand",
  "serde",
  "serde_json",
@@ -692,6 +693,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "owo-colors"
+version = "4.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c6901729fa79e91a0913333229e9ca5dc725089d1c363b2f4b4760709dc4a52"
 
 [[package]]
 name = "parking_lot"

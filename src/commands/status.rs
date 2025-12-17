@@ -1,5 +1,6 @@
 use crate::repo::Repo;
 use anyhow::{Context, Result};
+use owo_colors::OwoColorize;
 use serde::Serialize;
 use serde_json;
 use std::fmt;
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 
 pub fn cmd_status<S: AsRef<str>>(files: &[S], json: bool) -> Result<()> {
     let repo = Repo::discover()?;
+    let is_gitattributes_encrypted: bool;
 
     if files.is_empty() {
         // Show repository status
@@ -21,6 +23,7 @@ pub fn cmd_status<S: AsRef<str>>(files: &[S], json: bool) -> Result<()> {
             .find_filtered_files()?
             .collect::<Result<Vec<_>>>()
             .context("Failed to get file path")?;
+        is_gitattributes_encrypted = encrypted_files.contains(&PathBuf::from(".gitattributes"));
 
         let status = RepositoryStatus {
             repository: repo.workdir().to_string_lossy().into_owned(),
@@ -48,6 +51,7 @@ pub fn cmd_status<S: AsRef<str>>(files: &[S], json: bool) -> Result<()> {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        is_gitattributes_encrypted = repo.is_filtered_file(&PathBuf::from(".gitattributes"))?;
 
         let status_list = FileStatusList {
             files: file_statuses,
@@ -58,6 +62,18 @@ pub fn cmd_status<S: AsRef<str>>(files: &[S], json: bool) -> Result<()> {
         } else {
             print!("{}", status_list);
         }
+    }
+
+    // Warn on stderr if the `.gitattributes` file is encrypted (regardless of output format)
+    if is_gitattributes_encrypted {
+        let warning_message = format!(
+            "Warning: The `{}` filter is applied to your `.gitattributes` file.",
+            crate::repo::FILTER_NAME
+        );
+        eprintln!("\n⚠️  {}", warning_message.red());
+        eprintln!("That file should never be encrypted, as it will prevent the filters from being applied during checkout.\n\
+                   Add the following line to your `.gitattributes` file to exclude it from encryption:\n");
+        eprintln!("{}", "```\n.gitattributes !filter !diff\n```".yellow());
     }
 
     Ok(())
