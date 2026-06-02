@@ -133,7 +133,7 @@ At that point, when you will `git add` a file to that repo that matches one of t
 
 To give you peace of mind and validate that files you added to your repo are processed by the Git filter, you can use `git-conceal status` (to list all the files that will go through the encryption filter) or `git-conceal status <file>` to check a specific file. This command will validate that the file would match a pattern of your `.gitattributes` that has the `filter=git-conceal` attribute set.
 
-You can also check what the blob content of the corresponding object looks like in the repository database by using `git show :<file>` (or `git show HEAD:<file>` if it's commited into `HEAD` already).
+You can also check what the blob content of the corresponding object looks like in the repository database by using `git show :<file>` (or `git show HEAD:<file>` if it's committed into `HEAD` already).
 This will show the raw content as stored in the repository. So even if `cat my-secret-file.txt` will show you the clear text locally (assuming you have unlocked your working copy with the right key), `git show :my-secret-file.txt` will show you the raw, encrypted binary data stored in the repository (assuming that file matches a `.gitattributes` pattern with `filter=git-conceal` set)
 
 ### Unlock a repository
