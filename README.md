@@ -1,5 +1,14 @@
 # git-conceal
 
+> [!IMPORTANT]
+>
+> This repo has now been archived.
+> 
+> We ended up using a slightly different approach via [a8c-secrets](https://github.com/Automattic/a8c-secrets) to manage our secrets instead of this `git-conceal` implementation.
+> The project should technically still work, but since we won't be using and thus maintaining it, we're archiving it to reflect that status.
+
+---
+
 <table><tr height="40px">
 <td width="150px"><img alt="icon" src="Icon.png" width="128px" height="128px" /></td>
 <td>This tool provides transparent encryption of files in Git repositories using a symmetric key.<br />
